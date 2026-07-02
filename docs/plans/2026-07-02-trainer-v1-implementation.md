@@ -67,7 +67,7 @@ internal/app/{theme,keymap,model,update,view}.go
 | 1 (tracer) | Browse: scope pane, skill list, `j/k` selection, detail header, `q` quit | 2, 3, 4, browse parts of 9/10/11 | DONE |
 | 2 | Inspect: tabs `a/b/c/d`, file lists, Glamour/Chroma render, asset no-preview | 8, detail parts of 9/10/11 | DONE |
 | 3 | Startup dependency check + continue prompt, disable `:a` when no `npx` | 6, part of 12 | DONE |
-| 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | NOT DONE |
+| 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | DONE |
 | 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | NOT DONE |
 | 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | NOT DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
@@ -255,9 +255,31 @@ Absorbs old Task 6 and the dependency-gating portion of Task 12.
 
 ---
 
-## Slice 4: Add skill — NOT DONE
+## Slice 4: Add skill — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues) and `go build ./...`.
 
 **User-observable behavior:** `:a` opens the add wizard. Step 1 asks for a source. Step 2 (only for SSH Git sources when 2+ usable key pairs exist) asks which SSH key to use. Step 3 suspends the TUI and runs interactive `npx skills add <source> -g` (prefixed with `GIT_SSH_COMMAND` when a key is chosen). On exit, Trainer rescans and refreshes regardless of exit code.
+
+### Implementation decisions & handoff notes for Slice 4 (READ before Slice 5+)
+
+> Decisions I made that were NOT dictated by the spec/plan, and must be reviewed:
+> (1) **The wizard is hand-rolled with a Bubbles `textinput` + a plain key-driven SSH key list, NOT Huh v2.** The plan/spec named Huh, but Huh forms are awkward to drive through `Model.Update` key presses in integration tests (they own their own event loop). A hand-rolled wizard keeps the whole flow testable through the public `Update`/`View` path with real key messages. If Huh is required later, this is the seam to swap.
+> (2) **Add execution is injected via `WithAddRunner`/`WithRescan` options** (function values), defaulting to nil (no-op) so tests never shell out. `main.go` wires the real `tea.ExecProcess` runner (suspends the TUI) and a `ScanGlobal` rescan closure. This mirrors the Slice 3 injectable-dependency pattern.
+> (3) **SSH key list uses `j/k` + `enter`**, rendered as a simple `> name` list (not a Bubbles list component) — minimal and directly testable.
+> (4) **`FindKeyPairs` errors in `main.go` are swallowed to `nil` keys** (missing `~/.ssh` shouldn't block the app); the SSH step simply never appears.
+
+- **`internal/ssh`:** `IsSSHGitSource(source)` classifies `ssh://` and scp-like `git@host:...` as SSH; shorthand/HTTPS/local paths are not. `FindKeyPairs(dir)` returns `[]KeyPair{Name, PrivatePath, PublicPath}` for private keys with a matching `.pub`, ignoring lone `.pub` files, `known_hosts`, `config`, and subdirs. `os.ReadDir` yields sorted entries so pairs are name-sorted for free.
+- **`internal/actions`:** `AddCommand(source, keyPath)` builds `npx skills add <source> -g`; a non-empty `keyPath` appends `GIT_SSH_COMMAND=ssh -i <keyPath>` onto `os.Environ()`. Construction is separate from execution so tests assert argv/env without running `npx`.
+- **App wizard state (`internal/app/add.go`):** `m.wizard *addWizard` (nil when closed). Steps: `stepSource` → optional `stepSSHKey`. `handleWizardKey` intercepts all keys while the wizard is open (checked before the palette in `handleKey`). `esc` cancels; `enter` calls `advanceWizard`. On the final step, `runAdd` builds the command, clears the wizard, and returns the injected runner's `tea.Cmd`, whose completion emits `addFinishedMsg`; `Update` handles that by calling `refreshFromDisk` (rescan + reset selection + re-sync viewport).
+- **`:a` when add is disabled** sets the status message and does NOT open the wizard (early return in `handlePaletteKey`).
+- **Deps added:** `charm.land/bubbles/v2/textinput` (already in the bubbles v2.1.0 module; pulled in transitive `github.com/atotto/clipboard` + `github.com/rivo/uniseg` via `go mod tidy`).
+
+### Files created in Slice 4
+- `internal/ssh/keys.go`, `internal/ssh/keys_test.go`
+- `internal/actions/add.go`, `internal/actions/add_test.go`
+- `internal/app/add.go`, `internal/app/add_test.go`
+- Modified `internal/app/{model,update,view}.go` and `cmd/trainer/main.go`.
 
 Absorbs old Task 5 (SSH), the add half of Task 7, and the add/refresh portion of Task 12.
 

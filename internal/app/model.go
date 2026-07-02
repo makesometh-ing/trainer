@@ -1,10 +1,13 @@
 package app
 
 import (
+	"os/exec"
+
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/makesometh-ing/trainer/internal/skills"
+	"github.com/makesometh-ing/trainer/internal/ssh"
 )
 
 const (
@@ -31,14 +34,29 @@ type Model struct {
 	addEnabled          bool
 	lockedDeleteEnabled bool
 
+	sshKeys []ssh.KeyPair
+
+	addRunner AddRunner
+	rescan    RescanFunc
+
 	palette bool
 	status  string
+
+	wizard *addWizard
 
 	width  int
 	height int
 }
 
 type Option func(*Model)
+
+// AddRunner runs the add command, invoking done with the command's exit error
+// once it completes. It returns a tea.Cmd so execution integrates with the
+// Bubble Tea runtime (suspending the TUI for interactive npx in production).
+type AddRunner func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd
+
+// RescanFunc reloads skills from disk after an add or delete action.
+type RescanFunc func() skills.ScanResult
 
 func WithAddEnabled(enabled bool) Option {
 	return func(m *Model) {
@@ -49,6 +67,24 @@ func WithAddEnabled(enabled bool) Option {
 func WithLockedDeleteEnabled(enabled bool) Option {
 	return func(m *Model) {
 		m.lockedDeleteEnabled = enabled
+	}
+}
+
+func WithSSHKeys(keys []ssh.KeyPair) Option {
+	return func(m *Model) {
+		m.sshKeys = keys
+	}
+}
+
+func WithAddRunner(runner AddRunner) Option {
+	return func(m *Model) {
+		m.addRunner = runner
+	}
+}
+
+func WithRescan(rescan RescanFunc) Option {
+	return func(m *Model) {
+		m.rescan = rescan
 	}
 }
 

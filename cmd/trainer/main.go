@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/makesometh-ing/trainer/internal/app"
 	"github.com/makesometh-ing/trainer/internal/runtime"
 	"github.com/makesometh-ing/trainer/internal/skills"
+	"github.com/makesometh-ing/trainer/internal/ssh"
 )
 
 func main() {
@@ -31,10 +34,26 @@ func main() {
 	lockPath := skills.DefaultGlobalLockPath(home)
 	result := skills.ScanGlobal(root, lockPath)
 
+	sshDir := filepath.Join(home, ".ssh")
+	keys, err := ssh.FindKeyPairs(sshDir)
+	if err != nil {
+		keys = nil
+	}
+
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		return tea.ExecProcess(cmd, done)
+	}
+	rescan := func() skills.ScanResult {
+		return skills.ScanGlobal(root, lockPath)
+	}
+
 	model := app.NewModel(
 		result,
 		app.WithAddEnabled(deps.NPXAvailable),
 		app.WithLockedDeleteEnabled(deps.NPXAvailable),
+		app.WithSSHKeys(keys),
+		app.WithAddRunner(runner),
+		app.WithRescan(rescan),
 	)
 	program := tea.NewProgram(model)
 	if _, err := program.Run(); err != nil {

@@ -17,6 +17,9 @@ func (m Model) View() tea.View {
 	detail := m.renderDetail()
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, scope, list, detail)
+	if m.wizard != nil {
+		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderWizard())
+	}
 	if m.palette {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderPalette())
 	}

@@ -13,11 +13,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+	case addFinishedMsg:
+		m = m.refreshFromDisk()
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.wizard != nil {
+		return m.handleWizardKey(msg)
+	}
 	if m.palette {
 		return m.handlePaletteKey(msg)
 	}
@@ -160,7 +166,9 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.palette = false
 		if !m.addEnabled {
 			m.status = "Adding skills is disabled: npx is not available."
+			return m, nil
 		}
+		m.wizard = newAddWizard()
 	case "d":
 		m.palette = false
 	}
