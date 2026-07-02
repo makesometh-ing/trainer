@@ -72,7 +72,7 @@ Relevant schema fields:
 }
 ```
 
-Skill list rows show `source` when locked. If unlocked, show a local/unlocked marker and the local path.
+Skill list rows show `source` when the skill is present in the lockfile. Otherwise they show the local filesystem path.
 
 Skill detail headers show:
 
@@ -115,7 +115,7 @@ The skill list shows discovered global skills.
 Each row includes:
 
 - skill name
-- one dim metadata line containing `source` if locked, otherwise local/unlocked metadata
+- one dim metadata line containing `source` when the skill is in the lockfile, otherwise the local path
 - local path when space allows
 
 Moving through the list immediately updates the detail pane. Pressing enter is not required.
@@ -204,7 +204,7 @@ npx is not available. Adding skills will be disabled.
 Continue? [y/N]
 ```
 
-If the user declines, Trainer exits before opening the TUI. If the user continues, the app opens in browse/delete mode and `:a` is disabled with an explanatory message. Delete of lockfile-backed skills also requires `npx`; if `npx` is unavailable, Trainer should disable lockfile-backed deletion and explain why. Direct deletion of unlocked local skills can still work after confirmation.
+If the user declines, Trainer exits before opening the TUI. If the user continues, the app opens in browse/delete mode and `:a` is disabled with an explanatory message. Delete of lockfile-backed skills also requires `npx`; if `npx` is unavailable, Trainer should disable lockfile-backed deletion and explain why. Direct deletion of skills not present in the lockfile can still work after confirmation.
 
 ## Add flow
 
@@ -388,5 +388,5 @@ Test coverage should include:
 - SSH key-pair detection
 - startup dependency detection for `node`, `npm`, and `npx`
 - add command construction with and without selected SSH key
-- delete strategy selection for locked vs unlocked skills
+- delete strategy selection for skills in the lockfile vs. skills only on disk
 - basic Bubble Tea update behavior for pane focus, tab selection, and skill selection
