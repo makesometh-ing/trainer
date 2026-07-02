@@ -12,6 +12,12 @@ import (
 )
 
 func (m Model) View() tea.View {
+	if m.tooSmall() {
+		v := tea.NewView(m.renderTooSmall())
+		v.AltScreen = true
+		return v
+	}
+
 	scope := m.renderScope()
 	list := m.renderSkillList()
 	detail := m.renderDetail()
@@ -23,12 +29,28 @@ func (m Model) View() tea.View {
 	if m.palette {
 		body = m.overlayCenter(body, m.renderPalette())
 	}
+	if m.confirm != nil {
+		body = m.overlayCenter(body, m.renderConfirm())
+	}
 	if m.status != "" {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderStatus())
 	}
 	v := tea.NewView(body)
 	v.AltScreen = true
 	return v
+}
+
+func (m Model) tooSmall() bool {
+	return m.width > 0 && m.height > 0 && (m.width < minWidth || m.height < minHeight)
+}
+
+func (m Model) renderTooSmall() string {
+	msg := "[Too small] Resize terminal to view the full app"
+	styled := lipgloss.NewStyle().Foreground(m.theme.Accent).Render(msg)
+	if m.width <= 0 || m.height <= 0 {
+		return styled
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, styled)
 }
 
 func (m Model) overlayCenter(base, modal string) string {
@@ -83,13 +105,13 @@ func (m Model) renderStatus() string {
 }
 
 func (m Model) renderScope() string {
-	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("Scope")
+	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(1) Scope")
 	item := lipgloss.NewStyle().Foreground(m.theme.Fg).Render("Global")
-	return m.pane(paneScope, strings.Join([]string{title, item}, "\n"))
+	return m.pane(paneScope, m.scopeWidth(), strings.Join([]string{title, item}, "\n"))
 }
 
 func (m Model) renderSkillList() string {
-	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("Skills")
+	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(2) Skills")
 	lines := []string{title}
 
 	for i, s := range m.skills {
@@ -103,7 +125,7 @@ func (m Model) renderSkillList() string {
 		lines = append(lines, name, "    "+meta)
 	}
 
-	return m.pane(paneSkills, strings.Join(lines, "\n"))
+	return m.pane(paneSkills, m.listWidth(), strings.Join(lines, "\n"))
 }
 
 func skillMeta(s skills.Skill) string {
@@ -114,10 +136,10 @@ func skillMeta(s skills.Skill) string {
 }
 
 func (m Model) renderDetail() string {
-	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("Detail")
+	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(3) Detail")
 	s, ok := m.selectedSkill()
 	if !ok {
-		return m.pane(paneDetail, title+"\nNo skill selected")
+		return m.pane(paneDetail, m.detailPaneWidth(), title+"\nNo skill selected")
 	}
 
 	lines := []string{
@@ -143,7 +165,7 @@ func (m Model) renderDetail() string {
 	lines = append(lines, m.renderTabs())
 	lines = append(lines, m.renderTabBody()...)
 
-	return m.pane(paneDetail, strings.Join(lines, "\n"))
+	return m.pane(paneDetail, m.detailPaneWidth(), strings.Join(lines, "\n"))
 }
 
 func (m Model) renderTabs() string {
@@ -151,10 +173,10 @@ func (m Model) renderTabs() string {
 		t     tab
 		label string
 	}{
-		{tabSkill, "a SKILL"},
-		{tabReferences, "b Refs"},
-		{tabScripts, "c Scripts"},
-		{tabAssets, "d Assets"},
+		{tabSkill, "(a) SKILL.md"},
+		{tabReferences, "(b) References"},
+		{tabScripts, "(c) Scripts"},
+		{tabAssets, "(d) Assets"},
 	}
 	parts := make([]string, 0, len(labels))
 	for _, l := range labels {
@@ -162,7 +184,7 @@ func (m Model) renderTabs() string {
 		if m.tab == l.t {
 			style = lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true)
 		}
-		parts = append(parts, style.Render("["+l.label+"]"))
+		parts = append(parts, style.Render(l.label))
 	}
 	return strings.Join(parts, " ")
 }
@@ -265,11 +287,7 @@ func (m Model) detailWidth() int {
 	if m.width <= 0 {
 		return 80
 	}
-	w := m.width / 3
-	if w < 20 {
-		return 20
-	}
-	return w
+	return m.detailPaneWidth()
 }
 
 func (m Model) renderFileList(files []skills.SkillFile) []string {
@@ -287,7 +305,7 @@ func (m Model) renderFileList(files []skills.SkillFile) []string {
 	return lines
 }
 
-func (m Model) pane(p pane, content string) string {
+func (m Model) pane(p pane, width int, content string) string {
 	border := m.theme.Border
 	if m.focus == p {
 		border = m.theme.ActiveBorder
@@ -296,5 +314,45 @@ func (m Model) pane(p pane, content string) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(border).
 		Padding(0, 1)
+	if width > 0 {
+		style = style.Width(width)
+	}
 	return style.Render(content)
+}
+
+const (
+	scopePaneWidth = 18
+	minListWidth   = 16
+)
+
+// paneBorderPad is the horizontal overhead a pane adds around its content
+// width: a 1-cell rounded border and 1-cell padding on each side.
+const paneBorderPad = 4
+
+func (m Model) scopeWidth() int {
+	return scopePaneWidth
+}
+
+func (m Model) listWidth() int {
+	if m.width <= 0 {
+		return 24
+	}
+	remaining := m.width - (scopePaneWidth + paneBorderPad)
+	w := remaining / 3
+	if w < minListWidth {
+		w = minListWidth
+	}
+	return w
+}
+
+func (m Model) detailPaneWidth() int {
+	if m.width <= 0 {
+		return defaultContentWidth
+	}
+	used := (scopePaneWidth + paneBorderPad) + (m.listWidth() + paneBorderPad)
+	w := m.width - used - paneBorderPad
+	if w < 20 {
+		w = 20
+	}
+	return w
 }

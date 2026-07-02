@@ -1,0 +1,29 @@
+# Binaries and build output
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/trainer
+
+# Test binaries and coverage
+*.test
+*.out
+coverage.*
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directory (if vendored)
+/vendor/
+
+# Editor and OS files
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Agent tooling
+.pi/

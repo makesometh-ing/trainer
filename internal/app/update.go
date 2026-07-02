@@ -16,6 +16,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case addFinishedMsg:
 		m = m.refreshFromDisk()
 		return m, nil
+	case deleteFinishedMsg:
+		m = m.refreshFromDisk()
+		return m, nil
 	}
 	return m, nil
 }
@@ -23,6 +26,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.wizard != nil {
 		return m.handleWizardKey(msg)
+	}
+	if m.confirm != nil {
+		return m.handleConfirmKey(msg)
 	}
 	if m.palette {
 		return m.handlePaletteKey(msg)
@@ -173,6 +179,7 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.wizard = newAddWizard()
 	case "d":
 		m.palette = false
+		return m.startDelete()
 	}
 	return m, nil
 }

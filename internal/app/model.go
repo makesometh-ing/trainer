@@ -14,6 +14,9 @@ const (
 	defaultContentWidth  = 80
 	defaultContentHeight = 20
 	detailChromeHeight   = 10
+
+	minWidth  = 60
+	minHeight = 15
 )
 
 type Model struct {
@@ -36,13 +39,15 @@ type Model struct {
 
 	sshKeys []ssh.KeyPair
 
-	addRunner AddRunner
-	rescan    RescanFunc
+	addRunner    AddRunner
+	deleteRunner AddRunner
+	rescan       RescanFunc
 
 	palette bool
 	status  string
 
-	wizard *addWizard
+	wizard  *addWizard
+	confirm *deleteConfirm
 
 	width  int
 	height int
@@ -79,6 +84,12 @@ func WithSSHKeys(keys []ssh.KeyPair) Option {
 func WithAddRunner(runner AddRunner) Option {
 	return func(m *Model) {
 		m.addRunner = runner
+	}
+}
+
+func WithDeleteRunner(runner AddRunner) Option {
+	return func(m *Model) {
+		m.deleteRunner = runner
 	}
 }
 

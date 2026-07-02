@@ -68,8 +68,8 @@ internal/app/{theme,keymap,model,update,view}.go
 | 2 | Inspect: tabs `a/b/c/d`, file lists, Glamour/Chroma render, asset no-preview | 8, detail parts of 9/10/11 | DONE |
 | 3 | Startup dependency check + continue prompt, disable `:a` when no `npx` | 6, part of 12 | DONE |
 | 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | DONE |
-| 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | NOT DONE |
-| 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | NOT DONE |
+| 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | DONE |
+| 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
 
 ---
@@ -315,7 +315,9 @@ Absorbs old Task 5 (SSH), the add half of Task 7, and the add/refresh portion of
 
 ---
 
-## Slice 5: Delete skill — NOT DONE
+## Slice 5: Delete skill — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues).
 
 **User-observable behavior:** `:d` starts delete confirmation for the selected skill, explaining removal, possible broken symlinks, and that it affects the global directory. Confirming a skill that is in the lockfile runs `npx skills remove -g <skill-name>`; confirming a skill that is only on disk removes its directory directly. Lockfile-backed delete is disabled when `npx` is unavailable. After deletion, Trainer rescans.
 
@@ -345,9 +347,28 @@ Absorbs the delete half of Task 7 and the delete/refresh portion of Task 12.
 - Filesystem delete (skill only on disk) is the one action safe to execute for real in tests (temp dir). Lockfile-backed delete stays construction-only + injected runner.
 - Deletion refresh should reuse the same rescan path as add (Slice 4) to avoid divergence.
 
+### Implementation decisions & handoff notes for Slice 5
+
+> Decisions not dictated by the spec/plan, review before relying on them:
+> (1) The confirm modal is a **single-key `y`/anything-else prompt** (not a text field or two-button widget), matching the palette/wizard hand-rolled style so it drives through `Update` with real key messages. `ctrl+c` quits; any non-`y` key cancels.
+> (2) Delete execution is injected via **`WithDeleteRunner`** (same `AddRunner` signature as add); `main.go` wires the same `tea.ExecProcess` runner for both add and delete. Tests pass no runner so npx never runs.
+> (3) Filesystem removal uses `actions.RemoveDirectory` (`os.RemoveAll`) and is the only action executed for real in tests, over a temp dir.
+> (4) Disabled-lockfile-delete wording: `"Deleting this skill is disabled: npx is not available."`
+
+- **`internal/actions/delete.go`:** `Strategy` enum (`StrategyNPXRemove`, `StrategyFilesystem`); `DeleteStrategy(skill)` returns npx-remove when `skill.Lock != nil`, else filesystem; `DeleteCommand(name)` builds `npx skills remove -g <name>`; `RemoveDirectory(path)` wraps `os.RemoveAll`.
+- **`internal/app/delete.go`:** `m.confirm *deleteConfirm` (nil when closed). `:d` → `startDelete` captures the selected skill and opens the confirm modal. `handleConfirmKey` intercepts keys while open (checked before palette in `handleKey`). Confirming dispatches on `DeleteStrategy`: npx path returns the injected runner's cmd (emits `deleteFinishedMsg` → `refreshFromDisk`); filesystem path removes the dir then refreshes inline. Lockfile delete with `lockedDeleteEnabled == false` sets a status message and does nothing.
+- Reuses Slice 4's `refreshFromDisk` for the post-delete rescan.
+
+### Files created in Slice 5
+- `internal/actions/delete.go`, `internal/actions/delete_test.go`
+- `internal/app/delete.go`, `internal/app/delete_test.go`
+- Modified `internal/app/{model,update,view}.go` and `cmd/trainer/main.go`.
+
 ---
 
-## Slice 6: Layout polish — NOT DONE
+## Slice 6: Layout polish — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues) and a binary build (`go build -o bin/trainer ./cmd/trainer`).
 
 **User-observable behavior:** Pane and detail-tab labels include their keyboard shortcut (`(1) Scope`, `(2) Skills`, `(3) Detail`; `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets`). The TUI fills the full terminal and reflows the three panes on resize. When the terminal is smaller than a minimum width/height, the app replaces the layout with a centered `[Too small] Resize terminal to view the full app` message and restores the layout once the terminal grows back.
 
@@ -368,6 +389,17 @@ New slice (not in the original horizontal plan) — captures full-screen/resize 
 ### Notes / open questions
 - Pick concrete minimum thresholds (e.g. width < 60 or height < 15) and encode them as named constants.
 - Keep assertions on substrings and coarse width checks; never snapshot the full frame (Lip Gloss padding is brittle).
+
+### Implementation decisions & handoff notes for Slice 6
+
+> Decisions not dictated by the spec/plan:
+> (1) Minimum thresholds are `minWidth = 60`, `minHeight = 15` (constants in `model.go`). Below either, `View()` returns only the centered `[Too small] Resize terminal to view the full app` message (via `lipgloss.Place`); the layout returns automatically once the terminal grows back since it is recomputed from `m.width/m.height` each render.
+> (2) Pane widths are computed from terminal width: scope pane fixed at `scopePaneWidth = 18`; the remainder splits into a skills list (`~1/3`, floor `minListWidth = 16`) and the detail pane (the rest). `paneBorderPad = 4` accounts for each pane's border+padding overhead. `detailWidth` (content wrap width) now tracks `detailPaneWidth` so Glamour/Chroma reflow with the pane.
+> (3) Pane labels carry shortcuts: `(1) Scope`, `(2) Skills`, `(3) Detail`; tab labels: `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets` (dropped the old `[...]` brackets).
+
+### Files modified in Slice 6
+- `internal/app/{model,view}.go` (thresholds, width-aware panes, too-small guard, labels)
+- `internal/app/layout_test.go` (new)
 
 ---
 

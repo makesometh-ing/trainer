@@ -53,6 +53,7 @@ func main() {
 		app.WithLockedDeleteEnabled(deps.NPXAvailable),
 		app.WithSSHKeys(keys),
 		app.WithAddRunner(runner),
+		app.WithDeleteRunner(runner),
 		app.WithRescan(rescan),
 	)
 	program := tea.NewProgram(model)
