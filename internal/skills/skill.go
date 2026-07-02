@@ -10,6 +10,7 @@ type Scope struct {
 type Skill struct {
 	Name        string
 	Description string
+	Body        string
 	Path        string
 	SkillPath   string
 	References  []SkillFile

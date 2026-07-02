@@ -1,11 +1,14 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/makesometh-ing/trainer/internal/skills"
 )
 
 func TestPaneLabelsShowShortcuts(t *testing.T) {
@@ -23,7 +26,7 @@ func TestDetailTabLabelsShowShortcuts(t *testing.T) {
 	m := NewModel(browseResult())
 
 	out := view(m)
-	for _, want := range []string{"(a) SKILL.md", "(b) References", "(c) Scripts", "(d) Assets"} {
+	for _, want := range []string{"(i) SKILL.md", "(r) References", "(s) Scripts", "(a) Assets"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected tab label %q, got:\n%s", want, out)
 		}
@@ -82,5 +85,33 @@ func TestPanesReflowToWidth(t *testing.T) {
 	}
 	if wide > 160 {
 		t.Errorf("frame width %d exceeds terminal width 160", wide)
+	}
+}
+
+func manySkills(n int) skills.ScanResult {
+	list := make([]skills.Skill, 0, n)
+	for i := 0; i < n; i++ {
+		list = append(list, skills.Skill{
+			Name: fmt.Sprintf("skill-%03d", i),
+			Path: fmt.Sprintf("/root/skill-%03d", i),
+		})
+	}
+	return skills.ScanResult{
+		Scope:  skills.Scope{Name: "Global", Path: "/root"},
+		Skills: list,
+	}
+}
+
+func TestFrameFitsWithinTerminal(t *testing.T) {
+	const w, h = 100, 30
+	var m tea.Model = NewModel(manySkills(80))
+	m = resize(m, w, h)
+
+	out := view(m)
+	if gotH := lipgloss.Height(out); gotH > h {
+		t.Errorf("frame height %d exceeds terminal height %d (overflow)", gotH, h)
+	}
+	if gotW := lipgloss.Width(out); gotW > w {
+		t.Errorf("frame width %d exceeds terminal width %d (overflow)", gotW, w)
 	}
 }

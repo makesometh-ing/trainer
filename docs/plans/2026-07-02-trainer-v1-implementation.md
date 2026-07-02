@@ -70,6 +70,7 @@ internal/app/{theme,keymap,model,update,view}.go
 | 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | DONE |
 | 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | DONE |
 | 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | DONE |
+| 7 | Detail rendering & layout polish (post-smoke): frontmatter strip, Gruvbox Glamour theme, pane fit/windowing, row highlight, `h`/`l`/`enter` nav, subfocus + scroll indicators, tab keys `i/r/s/a` | new | DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
 
 ---
@@ -394,12 +395,60 @@ New slice (not in the original horizontal plan) — captures full-screen/resize 
 
 > Decisions not dictated by the spec/plan:
 > (1) Minimum thresholds are `minWidth = 60`, `minHeight = 15` (constants in `model.go`). Below either, `View()` returns only the centered `[Too small] Resize terminal to view the full app` message (via `lipgloss.Place`); the layout returns automatically once the terminal grows back since it is recomputed from `m.width/m.height` each render.
-> (2) Pane widths are computed from terminal width: scope pane fixed at `scopePaneWidth = 18`; the remainder splits into a skills list (`~1/3`, floor `minListWidth = 16`) and the detail pane (the rest). `paneBorderPad = 4` accounts for each pane's border+padding overhead. `detailWidth` (content wrap width) now tracks `detailPaneWidth` so Glamour/Chroma reflow with the pane.
-> (3) Pane labels carry shortcuts: `(1) Scope`, `(2) Skills`, `(3) Detail`; tab labels: `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets` (dropped the old `[...]` brackets).
+> (2) Pane widths are computed from terminal width: scope pane fixed at `scopePaneWidth = 18`; the remainder splits into a skills list (`~1/3`, floor `minListWidth = 16`) and the detail pane (the rest). `paneBorderPad = 4` accounts for each pane's border+padding overhead. (Slice 7 note: `detailWidth` was later corrected to `detailPaneWidth − paneBorderPad`, and explicit pane heights were added — see Slice 7.)
+> (3) Pane labels carry shortcuts: `(1) Scope`, `(2) Skills`, `(3) Detail`; tab labels were `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets` here — **changed in Slice 7** to `(i)/(r)/(s)/(a)` to avoid `j`/`k` collisions.
 
 ### Files modified in Slice 6
 - `internal/app/{model,view}.go` (thresholds, width-aware panes, too-small guard, labels)
 - `internal/app/layout_test.go` (new)
+
+---
+
+## Slice 7: Detail rendering & layout polish (post-smoke fixes) — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues) and a rendered smoke frame against the real `~/.agents/skills` at 130×40 (all three panes aligned and within the frame).
+
+This slice was **not in the original plan** — it captures issues found during the first manual smoke test (screenshots) after Slices 5/6 landed. Every fix was done TDD (RED→GREEN, one behavior per cycle) with integration tests driven through `View()` / `ScanGlobal` over real temp-dir or in-memory fixtures.
+
+### Problems found in smoke testing
+1. Panes 2 and 3 overflowed past the bottom of the terminal (Lip Gloss grows a box past `Height()` instead of clipping — it does not auto-clip content).
+2. Detail content was cut off at the bottom; the viewport was not sized to the available rows.
+3. Raw YAML frontmatter (`## name: …`, `description: …`) leaked into the rendered `SKILL.md` tab.
+4. Glamour used its built-in `dark` style, which clashed with the Gruvbox UI.
+5. Skills list showed the full filesystem path instead of `local`; rows were poorly aligned with no selection highlight and no truncation.
+6. No subfocus indicator (file list vs content) and no scroll indicator.
+7. Tab shortcuts `(a)…(d)` collided conceptually with vim keys; user requested `(i) SKILL.md (r) References (s) Scripts (a) Assets`.
+8. `h`/`l`/`enter` did not move focus between panes.
+
+### RED→GREEN cycles (behavior per cycle)
+1. **SKILL.md tab hides frontmatter.** `Skill` gained a `Body` field populated by the scanner from `ParseSkillMarkdown`; the SKILL.md tab renders `Body` via Glamour instead of re-reading the raw file by path. (`skills.Skill.Body`, `scanner.go`, `view.currentContent`.)
+2. **Whole frame fits within the terminal.** New helpers `paneHeight()` / `paneContentHeight()` size every pane to `terminalHeight − frameMargin`; `pane` now takes an explicit height. Proven by `TestFrameFitsWithinTerminal` (80 skills at 100×30 must not exceed height/width).
+3. **Skills list windows around the selection.** `windowBounds(n, selected, capacity)` keeps the selected skill visible; the list renders only the visible slice (2 rows/skill).
+4. **Detail content viewport fits.** Header fields are truncated to one line each so header height is deterministic; the viewport is sized to `paneContentHeight − header − fileLines − contentHeader`.
+5. **Skills meta shows `local`, dimmed.** `skillMeta` returns the literal `local` when unlocked (was the path). Meta line uses the `Muted` color.
+6. **Selected row highlighted.** `skillRow` renders the selected skill's two lines with an `Elevated` background band + accent name; both lines truncate with `…` via `truncate`.
+7. **`h`/`l`/`enter` move focus.** `focusLeft`/`focusRight` clamp at the edges; `enter` and `l` both move right.
+8. **Tab labels/keys.** `(i) SKILL.md (r) References (s) Scripts (a) Assets`; `setTab` bound to `i`/`r`/`s`/`a`. Chosen so tab keys never collide with `j`/`k`.
+9. **Subfocus indicator.** `sectionLabel(name, active)` renders `▸ Files` / `▸ Content` with accent when active, dim otherwise.
+10. **Scroll indicator.** `contentSectionLabel` appends the viewport's `ScrollPercent()` as `Content (NN%)`.
+11. **Gruvbox Glamour theme.** `render.GruvboxDarkHard()` returns a custom `ansi.StyleConfig` built from the spec palette, wired via `glamour.WithStyles`.
+
+### Implementation decisions & handoff notes for Slice 7 (READ before further UI work)
+
+> Decisions not dictated by the spec (spec has since been updated to match):
+> (1) **Lip Gloss does not clip to `Height()`** — it grows the box. All fit/overflow work relies on pre-sizing content (windowing + viewport height + one-line-truncated header), not on the style clipping for us.
+> (2) **Glamour strips color in non-TTY (test) output and exposes no color-profile override.** So the Gruvbox theme is tested by asserting `render.GruvboxDarkHard()`'s `StyleConfig` fields against the spec's literal hex values (independent source of truth), NOT by asserting rendered ANSI. Lip Gloss DOES emit color in tests, so row-highlight behavior is tested via `View()`.
+> (3) **Detail content width** = `detailPaneWidth() − paneBorderPad` (was the full pane width, which caused wrapping/overflow). This is the width passed to Glamour/Chroma.
+> (4) **`truncate`** is a shared helper (rune-aware via `lipgloss.Width`) used by both skill rows and detail header lines.
+> (5) Section headers (`Files`/`Content`) only appear on file tabs (References/Scripts/Assets), never on the SKILL.md tab.
+
+### Files changed in Slice 7
+- `internal/skills/{skill,scanner}.go` — add and populate `Skill.Body`
+- `internal/render/gruvbox.go` (new) — `GruvboxDarkHard() ansi.StyleConfig`
+- `internal/render/markdown.go` — use `WithStyles(GruvboxDarkHard())`
+- `internal/render/render_test.go` — Gruvbox palette assertion (+ rename local `ansi` regexp var to `ansiRE` to avoid the new import clash)
+- `internal/app/{model,update,view}.go` — pane heights, windowing, truncation, row highlight, focus nav, tab keys, subfocus + scroll indicators
+- `internal/app/{browse,detail,layout,palette,nav}_test.go` — new/updated integration tests
 
 ---
 
@@ -415,11 +464,13 @@ go run ./cmd/trainer   # manual smoke against real ~/.agents/skills
 
 Manual smoke checklist:
 - TUI opens; left pane shows `Global`.
-- Middle pane lists skills from `~/.agents/skills`.
-- Detail pane updates as selection changes.
-- `a/b/c/d` switch tabs; file lists + rendering work.
-- `/` opens shortcuts; `:` opens the command palette.
+- Middle pane lists skills from `~/.agents/skills`, selected row highlighted, meta shows source or `local`.
+- Detail pane updates as selection changes; header fields truncate to one line.
+- `i/r/s/a` switch tabs; file lists + rendering work; `SKILL.md` shows no raw frontmatter.
+- `h`/`l`/`enter` move focus between panes; `tab` toggles Files/Content subfocus (`▸` marker); content shows `Content (NN%)`.
+- `/` opens shortcuts; `:` opens the command palette (centered).
 - `:a` and `:d` behave per dependency status.
+- Resize: frame always fits; below 60×15 shows the too-small message and restores on grow.
 
 ---
 

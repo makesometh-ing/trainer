@@ -13,7 +13,6 @@ import (
 const (
 	defaultContentWidth  = 80
 	defaultContentHeight = 20
-	detailChromeHeight   = 10
 
 	minWidth  = 60
 	minHeight = 15
@@ -141,7 +140,7 @@ func (m Model) selectedSkill() (skills.Skill, bool) {
 
 func (m *Model) syncSize() {
 	m.content.SetWidth(m.detailWidth())
-	m.content.SetHeight(m.contentHeight())
+	m.content.SetHeight(m.paneContentHeight())
 	m.content.SetContent(m.currentContent())
 }
 

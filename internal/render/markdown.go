@@ -6,7 +6,7 @@ import (
 
 func Markdown(content string, width int) (string, error) {
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dark"),
+		glamour.WithStyles(GruvboxDarkHard()),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {

@@ -102,7 +102,14 @@ Trainer uses a three-pane TUI.
 
 Trainer runs full-screen (alt screen) and fills the entire terminal by
 default. The three panes reflow to the current terminal width and height on
-every resize.
+every resize. Panes are given explicit widths and a shared explicit height so
+the whole frame — including a one-row outer margin — always fits within the
+terminal and never overflows past the bottom or right edge. Content that would
+exceed a pane is windowed (skills list) or scrolled (detail content) rather
+than growing the pane.
+
+The scope pane has a fixed width; the remaining width is split between the
+skills list and the detail pane.
 
 If the terminal is too small to render the app usefully, Trainer replaces the
 three-pane layout with a centered message such as:
@@ -112,7 +119,7 @@ three-pane layout with a centered message such as:
 ```
 
 The app returns to the normal layout as soon as the terminal is resized large
-enough. A minimum width/height threshold defines "too small".
+enough. The minimum threshold is width < 60 or height < 15.
 
 ### Pane and tab labels
 
@@ -120,7 +127,10 @@ Each pane and detail tab label includes its keyboard shortcut so shortcuts are
 discoverable without opening the shortcuts modal:
 
 - Panes: `(1) Scope`, `(2) Skills`, `(3) Detail`
-- Detail tabs: `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets`
+- Detail tabs: `(i) SKILL.md`, `(r) References`, `(s) Scripts`, `(a) Assets`
+
+Detail tab shortcuts deliberately avoid `j`/`k` (reserved for vim-style
+selection/scroll movement) so tab switching never conflicts with navigation.
 
 ### Pane 1: Scope
 
@@ -136,11 +146,16 @@ Do not render disabled future placeholders. Future scopes may be agent names suc
 
 The skill list shows discovered global skills.
 
-Each row includes:
+Each skill occupies two lines:
 
-- skill name
-- one dim metadata line containing `source` when the skill is in the lockfile, otherwise the local path
-- local path when space allows
+- line 1: the skill name
+- line 2: one dim metadata line containing `source` when the skill is in the
+  lockfile, otherwise the literal label `local`
+
+Both lines are truncated with an ellipsis (`…`) when they exceed the pane
+width. The selected skill's two lines are highlighted with an elevated
+background band and accent-colored name. The list is windowed around the
+selection so it always fits the pane height without overflowing the frame.
 
 Moving through the list immediately updates the detail pane. Pressing enter is not required.
 
@@ -150,20 +165,33 @@ The detail pane is vertical:
 
 ```text
 Skill title
-Source metadata
+Source metadata (dimmed, each field truncated to one line)
 Tabs
-File list, for References/Scripts/Assets
+Files section header (for References/Scripts/Assets)
+File list
+Content section header with scroll percentage
 Content
 ```
 
+The detail header fields (description, source, sourceUrl, skillPath, path) are
+each truncated to a single line so the header height is deterministic and the
+content viewport can be sized to the remaining rows.
+
 Tabs:
 
-- `a` — `SKILL.md`
-- `b` — References
-- `c` — Scripts
-- `d` — Assets
+- `i` — `SKILL.md`
+- `r` — References
+- `s` — Scripts
+- `a` — Assets
 
-`SKILL.md` has no file list. References, Scripts, and Assets show a file list above content when files exist.
+The `SKILL.md` tab renders the Markdown body only; YAML frontmatter is stripped
+before rendering. `SKILL.md` has no file list. References, Scripts, and Assets
+show a file list above content when files exist.
+
+For tabs with a file list, a `Files` and a `Content` section header are shown.
+The header for the currently focused subfocus (file list vs content) is marked
+with a leading `▸` pointer and accent styling; the other is dimmed. The
+`Content` header also shows a scroll percentage, e.g. `Content (42%)`.
 
 Assets are list-only in v1. The selected asset content area shows:
 
@@ -185,15 +213,18 @@ Global keys:
 Skill list pane:
 
 - `j` / `k` — move selection down/up
-- `h` — move to scope pane
-- `l` — move to detail pane
+- `h` — move focus to the pane on the left
+- `l` / `enter` — move focus to the pane on the right
+
+Pane focus moves one pane at a time and clamps at the edges (`h` on the scope
+pane and `l` on the detail pane are no-ops).
 
 Detail pane:
 
-- `a` — show `SKILL.md` tab
-- `b` — show References tab
-- `c` — show Scripts tab
-- `d` — show Assets tab
+- `i` — show `SKILL.md` tab
+- `r` — show References tab
+- `s` — show Scripts tab
+- `a` — show Assets tab
 - `tab` — toggle subfocus between file list and content for tabs with file lists
 - `j` / `k` — move selected file when file-list subfocus is active
 - `j` / `k` — scroll content one line when content subfocus is active
@@ -291,11 +322,18 @@ After deletion, Trainer refreshes from disk.
 Markdown rendering:
 
 - Use Glamour for `SKILL.md` and Markdown references.
-- Use word wrapping based on detail pane width.
+- Strip YAML frontmatter before rendering the `SKILL.md` body (the scanner
+  already returns the parsed body; render that rather than the raw file).
+- Use a custom Gruvbox Dark Hard Glamour style built from the theme palette
+  (Glamour ships no Gruvbox style, so it is configured via a custom
+  `ansi.StyleConfig`). Do not use Glamour's built-in `dark` style.
+- Use word wrapping based on the detail content width (pane width minus its
+  border and padding).
 
 Script rendering:
 
 - Use Chroma for syntax highlighting by file extension.
+- Use the `gruvbox` Chroma style with the `terminal256` formatter.
 - Fall back to plain text for unknown extensions.
 
 Asset rendering:

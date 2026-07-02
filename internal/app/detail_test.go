@@ -61,6 +61,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 			{
 				Name:        "alpha",
 				Description: "First skill",
+				Body:        "# Alpha Overview\n\nHow to use alpha.\n",
 				Path:        dir,
 				SkillPath:   skillPath,
 				References:  []skills.SkillFile{{Name: "guide.md", Path: refPath}},
@@ -75,7 +76,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 }
 
 func TestSkillTabRendersSkillBody(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "a")
+	m := press(NewModel(detailResult(t)), "i")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Alpha Overview") {
@@ -83,8 +84,20 @@ func TestSkillTabRendersSkillBody(t *testing.T) {
 	}
 }
 
+func TestSkillTabHidesFrontmatter(t *testing.T) {
+	m := press(NewModel(detailResult(t)), "i")
+
+	out := plain(view(m))
+	if strings.Contains(out, "name: alpha") {
+		t.Errorf("expected SKILL.md tab to hide raw frontmatter, got %q", out)
+	}
+	if strings.Contains(out, "description: First skill") {
+		t.Errorf("expected SKILL.md tab to hide raw frontmatter, got %q", out)
+	}
+}
+
 func TestReferencesTabShowsFileList(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "b")
+	m := press(NewModel(detailResult(t)), "r")
 
 	out := view(m)
 	if !strings.Contains(out, "guide.md") {
@@ -93,7 +106,7 @@ func TestReferencesTabShowsFileList(t *testing.T) {
 }
 
 func TestSelectingReferenceRendersMarkdown(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "b")
+	m := press(NewModel(detailResult(t)), "r")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Reference Heading") {
@@ -123,7 +136,7 @@ func scriptOnlyResult(t *testing.T, name, body string) skills.ScanResult {
 }
 
 func TestScriptsTabHighlightsCode(t *testing.T) {
-	m := press(NewModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "c")
+	m := press(NewModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "func main") {
@@ -132,7 +145,7 @@ func TestScriptsTabHighlightsCode(t *testing.T) {
 }
 
 func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
-	m := press(NewModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "c")
+	m := press(NewModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "raw plain content") {
@@ -141,7 +154,7 @@ func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
 }
 
 func TestAssetsTabShowsNoPreview(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "d")
+	m := press(NewModel(detailResult(t)), "a")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "logo.png") {
@@ -182,10 +195,28 @@ func sized(m tea.Model, w, h int) tea.Model {
 	return next
 }
 
+func TestContentShowsScrollIndicator(t *testing.T) {
+	var m tea.Model = NewModel(longScriptResult(t))
+	m = sized(m, 120, 24)
+	m = press(m, "s")
+	m = press(m, "tab")
+
+	before := lineContaining(view(m), "%")
+	if before == "" {
+		t.Fatalf("expected a scroll percentage indicator on long content, got none")
+	}
+
+	m = press(m, "ctrl+d")
+	after := lineContaining(view(m), "%")
+	if after == before {
+		t.Errorf("expected scroll indicator to change after scrolling, got %q both times", before)
+	}
+}
+
 func TestContentScrollKeysMoveViewport(t *testing.T) {
 	var m tea.Model = NewModel(longScriptResult(t))
 	m = sized(m, 120, 24)
-	m = press(m, "c")
+	m = press(m, "s")
 
 	top := plain(view(m))
 	if !strings.Contains(top, "line-000") {
@@ -234,12 +265,34 @@ func twoReferencesResult(t *testing.T) skills.ScanResult {
 	}
 }
 
+func TestSubfocusIndicatorShowsActiveSection(t *testing.T) {
+	var m tea.Model = NewModel(twoReferencesResult(t))
+	m = sized(m, 120, 40)
+	m = press(m, "3")
+	m = press(m, "r")
+
+	listActive := lineContaining(view(m), "Files")
+	if !strings.Contains(listActive, "▸") {
+		t.Errorf("expected Files section marked active by default, got %q", listActive)
+	}
+
+	m = press(m, "tab")
+	contentActive := lineContaining(view(m), "Content")
+	if !strings.Contains(contentActive, "▸") {
+		t.Errorf("expected Content section marked active after tab, got %q", contentActive)
+	}
+	filesNowInactive := lineContaining(view(m), "Files")
+	if strings.Contains(filesNowInactive, "▸") {
+		t.Errorf("expected Files section no longer active after tab, got %q", filesNowInactive)
+	}
+}
+
 func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 	// List subfocus: j moves the selected file, switching rendered content.
 	var listMode tea.Model = NewModel(twoReferencesResult(t))
 	listMode = sized(listMode, 120, 40)
 	listMode = press(listMode, "3")
-	listMode = press(listMode, "b")
+	listMode = press(listMode, "r")
 	if !strings.Contains(plain(view(listMode)), "Alpha Heading") {
 		t.Fatalf("expected first reference content initially")
 	}
@@ -252,7 +305,7 @@ func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 	var contentMode tea.Model = NewModel(twoReferencesResult(t))
 	contentMode = sized(contentMode, 120, 40)
 	contentMode = press(contentMode, "3")
-	contentMode = press(contentMode, "b")
+	contentMode = press(contentMode, "r")
 	contentMode = press(contentMode, "tab")
 	contentMode = press(contentMode, "j")
 	if strings.Contains(plain(view(contentMode)), "Bravo Heading") {

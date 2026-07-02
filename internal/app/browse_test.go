@@ -72,15 +72,43 @@ func TestSelectionMovesWithJK(t *testing.T) {
 	}
 }
 
-func TestRowShowsSourceOrLocalPath(t *testing.T) {
+func TestRowShowsSourceOrLocalLabel(t *testing.T) {
 	m := NewModel(browseResult())
 
 	out := view(m)
 	if !strings.Contains(out, "owner/alpha") {
 		t.Error("skill with a lockfile source should show that source")
 	}
-	if !strings.Contains(out, "/root/bravo") {
-		t.Error("skill without a source should show its local path")
+	if !strings.Contains(out, "local") {
+		t.Error("skill without a source should show the 'local' label")
+	}
+	if strings.Contains(out, "/root/bravo") {
+		t.Error("skill without a source should not show its filesystem path in the list")
+	}
+}
+
+func lineContaining(s, substr string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(plain(line), substr) {
+			return line
+		}
+	}
+	return ""
+}
+
+func TestSelectedRowIsStyledDifferently(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+
+	whenSelected := lineContaining(view(m), "alpha")
+
+	m = press(m, "j")
+	whenNotSelected := lineContaining(view(m), "alpha")
+
+	if whenSelected == "" || whenNotSelected == "" {
+		t.Fatalf("expected alpha row to render in both states")
+	}
+	if whenSelected == whenNotSelected {
+		t.Errorf("expected the alpha row to render differently when selected vs not, got %q both times", whenSelected)
 	}
 }
 

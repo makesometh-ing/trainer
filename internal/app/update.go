@@ -50,15 +50,19 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.moveDown()
 	case "k", "up":
 		m.moveUp()
+	case "h", "left":
+		m.focusLeft()
+	case "l", "right", "enter":
+		m.focusRight()
 	case "tab":
 		m.toggleSubfocus()
-	case "a":
+	case "i":
 		m.setTab(tabSkill)
-	case "b":
+	case "r":
 		m.setTab(tabReferences)
-	case "c":
+	case "s":
 		m.setTab(tabScripts)
-	case "d":
+	case "a":
 		m.setTab(tabAssets)
 	case "ctrl+d":
 		m.content.HalfPageDown()
@@ -154,6 +158,18 @@ func (m *Model) toggleSubfocus() {
 		m.subfocus = subfocusContent
 	} else {
 		m.subfocus = subfocusList
+	}
+}
+
+func (m *Model) focusLeft() {
+	if m.focus > paneScope {
+		m.focus--
+	}
+}
+
+func (m *Model) focusRight() {
+	if m.focus < paneDetail {
+		m.focus++
 	}
 }
 
