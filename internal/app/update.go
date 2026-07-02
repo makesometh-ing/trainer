@@ -160,6 +160,8 @@ func (m *Model) setTab(t tab) {
 
 func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
 	case "esc":
 		m.palette = false
 	case "a":

@@ -64,9 +64,8 @@ func (m Model) renderPalette() string {
 		"",
 		cmd("a", "add skill"),
 		cmd("d", "delete skill"),
-		cmd("q", "quit"),
 		"",
-		lipgloss.NewStyle().Foreground(m.theme.Muted).Render("esc cancel"),
+		cmd("esc", "cancel"),
 	)
 
 	return lipgloss.NewStyle().

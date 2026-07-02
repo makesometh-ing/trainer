@@ -22,8 +22,18 @@ func TestPaletteOpensAsModalWithCommands(t *testing.T) {
 	if !strings.Contains(out, "delete skill") {
 		t.Errorf("expected palette to list delete command, got:\n%s", out)
 	}
-	if !strings.Contains(out, "quit") {
-		t.Errorf("expected palette to list quit, got:\n%s", out)
+}
+
+func TestPaletteQuitsWithQ(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+
+	m = press(m, ":")
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected q to return a command while palette is open")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("expected q to quit from the palette")
 	}
 }
 
