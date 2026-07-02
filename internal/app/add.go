@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -37,6 +39,8 @@ func newAddWizard() *addWizard {
 
 func (m Model) handleWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
 	case "esc":
 		m.wizard = nil
 		return m, nil
@@ -71,7 +75,10 @@ func (w *addWizard) moveKey(delta int) {
 func (m Model) advanceWizard() (tea.Model, tea.Cmd) {
 	switch m.wizard.step {
 	case stepSource:
-		source := m.wizard.source.Value()
+		source := strings.TrimSpace(m.wizard.source.Value())
+		if source == "" {
+			return m, nil
+		}
 		if ssh.IsSSHGitSource(source) && len(m.sshKeys) >= 2 {
 			m.wizard.step = stepSSHKey
 			m.wizard.keys = m.sshKeys
@@ -79,7 +86,7 @@ func (m Model) advanceWizard() (tea.Model, tea.Cmd) {
 		}
 		return m.runAdd(source, "")
 	case stepSSHKey:
-		source := m.wizard.source.Value()
+		source := strings.TrimSpace(m.wizard.source.Value())
 		keyPath := ""
 		if m.wizard.keySel >= 0 && m.wizard.keySel < len(m.wizard.keys) {
 			keyPath = m.wizard.keys[m.wizard.keySel].PrivatePath
@@ -113,6 +120,8 @@ func (m Model) refreshFromDisk() Model {
 	if m.selected >= len(m.skills) {
 		m.selected = 0
 	}
+	m.fileSel = 0
+	m.subfocus = subfocusList
 	m.syncContent()
 	return m
 }

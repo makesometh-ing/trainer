@@ -82,6 +82,41 @@ func TestAddDisabledDoesNotOpenWizard(t *testing.T) {
 	}
 }
 
+func TestCtrlCQuitsFromWizard(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+
+	m = press(m, ":")
+	m = press(m, "a")
+
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "ctrl+c"})
+	if cmd == nil {
+		t.Fatal("expected ctrl+c to return a command while wizard is open")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("expected ctrl+c to quit from the wizard")
+	}
+}
+
+func TestEmptySourceDoesNotAdvance(t *testing.T) {
+	ran := false
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		ran = true
+		return func() tea.Msg { return done(nil) }
+	}
+	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+
+	m = press(m, ":")
+	m = press(m, "a")
+	m = press(m, "enter")
+
+	if ran {
+		t.Error("expected empty source not to run the add command")
+	}
+	if !strings.Contains(view(m), "Add skill") {
+		t.Error("expected to stay on the source step for empty input")
+	}
+}
+
 func TestConfirmingAddRunsCommandThenRescans(t *testing.T) {
 	var ranArgs []string
 	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {

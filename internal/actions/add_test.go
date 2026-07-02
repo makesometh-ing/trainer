@@ -27,7 +27,7 @@ func TestAddCommandWithKeySetsGitSSHCommand(t *testing.T) {
 		t.Errorf("args = %v, want %v", cmd.Args, wantArgs)
 	}
 
-	want := `GIT_SSH_COMMAND=ssh -i /home/me/.ssh/id_ed25519`
+	want := `GIT_SSH_COMMAND=ssh -i "/home/me/.ssh/id_ed25519"`
 	if !slices.Contains(cmd.Env, want) {
 		t.Errorf("expected env to contain %q, got %v", want, cmd.Env)
 	}

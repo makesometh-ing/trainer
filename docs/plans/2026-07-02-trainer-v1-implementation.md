@@ -273,6 +273,7 @@ Absorbs old Task 6 and the dependency-gating portion of Task 12.
 - **`internal/actions`:** `AddCommand(source, keyPath)` builds `npx skills add <source> -g`; a non-empty `keyPath` appends `GIT_SSH_COMMAND=ssh -i <keyPath>` onto `os.Environ()`. Construction is separate from execution so tests assert argv/env without running `npx`.
 - **App wizard state (`internal/app/add.go`):** `m.wizard *addWizard` (nil when closed). Steps: `stepSource` → optional `stepSSHKey`. `handleWizardKey` intercepts all keys while the wizard is open (checked before the palette in `handleKey`). `esc` cancels; `enter` calls `advanceWizard`. On the final step, `runAdd` builds the command, clears the wizard, and returns the injected runner's `tea.Cmd`, whose completion emits `addFinishedMsg`; `Update` handles that by calling `refreshFromDisk` (rescan + reset selection + re-sync viewport).
 - **`:a` when add is disabled** sets the status message and does NOT open the wizard (early return in `handlePaletteKey`).
+- **Post-review fixes (applied):** `ctrl+c` quits from inside the wizard; an empty/whitespace source stays on the source step instead of running `npx skills add  -g`; `GIT_SSH_COMMAND` quotes the key path (`ssh -i "<path>"`) to survive spaces; `refreshFromDisk` resets `fileSel`/`subfocus` alongside `selected`.
 - **Deps added:** `charm.land/bubbles/v2/textinput` (already in the bubbles v2.1.0 module; pulled in transitive `github.com/atotto/clipboard` + `github.com/rivo/uniseg` via `go mod tidy`).
 
 ### Files created in Slice 4
