@@ -89,14 +89,28 @@ If a locked field is missing, omit that field. Always show the local filesystem 
 Trainer uses a three-pane TUI.
 
 ```text
-┌ (1) Scope ┐ ┌ (2) Skills ───────────┐ ┌ (3) Detail ───────────────────────┐
-│Global     │ │ skill-name            │ │ skill-name                         │
-│           │ │ source/path metadata  │ │ source / sourceUrl / skillPath/path│
-│           │ │ ...                   │ │ [(a) SKILL] [(b) Refs] [(c) Scripts] [(d) Assets]
-│           │ │                       │ │ file list, when relevant           │
-│           │ │                       │ │ rendered content                   │
-└───────────┘ └───────────────────────┘ └────────────────────────────────────┘
+┌ (1) Scope ┐ ┌ (2) Skills ───────────┐ ┌ (3) Details ──────────────────────┐
+│ Global    │ │ Search  ▏             │ │ skill-name                         │
+│           │ │ Filter  (•) All       │ │ source     owner/repo              │
+│           │ │         ( ) Remote    │ │ sourceUrl  https://…               │
+│           │ │         ( ) Local     │ │ skillPath  skills/…/SKILL.md       │
+│           │ │ ─────────────────     │ │ path       /Users/…                │
+│           │ │ skill-name            │ │ ─────────────────────────────     │
+│           │ │   source or local     │ │ (i) SKILL.md (r) References …      │
+│           │ │ skill-name            │ │ ─────────────────────────────     │
+│           │ │   source or local     │ │ file list, when relevant       █  │
+│           │ │                       │ │ ─────────────────────────────  █  │
+│           │ │                       │ │ rendered content               ▓  │
+└───────────┘ └───────────────────────┘ └───────────────────────────────────┘
 ```
+
+The Skills pane fills the terminal from the Scope pane's right edge to the
+Details pane's left edge. The Details pane fills the remaining width all the
+way to the terminal's right edge, with no dead space. Within the Details pane,
+the meta block, the tab bar, the optional file list, and the content are each
+separated by a horizontal divider line so the sections are visually distinct. A
+scrollbar is drawn down the right edge of the content when the content is taller
+than the visible area.
 
 ### Full-screen and resize behavior
 
@@ -124,13 +138,16 @@ enough. The minimum threshold is width < 60 or height < 15.
 ### Pane and tab labels
 
 Each pane and detail tab label includes its keyboard shortcut so shortcuts are
-discoverable without opening the shortcuts modal:
+discoverable without opening the help modal:
 
-- Panes: `(1) Scope`, `(2) Skills`, `(3) Detail`
+- Panes: `(1) Scope`, `(2) Skills`, `(3) Details`
 - Detail tabs: `(i) SKILL.md`, `(r) References`, `(s) Scripts`, `(a) Assets`
 
 Detail tab shortcuts deliberately avoid `j`/`k` (reserved for vim-style
 selection/scroll movement) so tab switching never conflicts with navigation.
+`i`, `s`, and `a` switch tabs from any pane. `r` is the one context-dependent
+key: in the Details pane it selects the References tab, and in the Skills pane
+it resets search and filter, so the letter serves both without a conflict.
 
 ### Pane 1: Scope
 
@@ -144,9 +161,44 @@ Do not render disabled future placeholders. Future scopes may be agent names suc
 
 ### Pane 2: Skills
 
-The skill list shows discovered global skills.
+The Skills pane has three parts stacked top to bottom: a search box, a filter
+radio group, and the skill list. The search box and the filter group are always
+drawn, even when empty, so the controls are always visible.
 
-Each skill occupies two lines:
+#### Search box
+
+A single-line text box that narrows the skill list as the user types. Matching
+is fuzzy (a skill matches when the typed characters appear in order anywhere in
+its name or source). The search box is off by default and shows a placeholder.
+
+- `/` moves focus into the search box.
+- Typing narrows the list immediately.
+- `enter` leaves the search box, keeping the typed text and the narrowed list.
+- `esc` clears the typed text and leaves the search box (the list returns to
+  full).
+
+#### Filter radio group
+
+A single-choice radio group that narrows the skill list by where each skill
+came from:
+
+- `All` — every skill (the default).
+- `Remote` — skills that have a lockfile entry (installed from a source).
+- `Local` — skills with no lockfile entry (present only on disk).
+
+- `f` moves focus into the filter group.
+- `j` / `k` move between the options while the group is focused.
+- `space` selects the option under the cursor.
+- `c` clears the selection back to `All`.
+
+Search and the filter combine: the list shows skills that match the search text
+and the selected origin. When the Skills pane is focused, `r` resets both at
+once (clears the search text and sets the filter back to `All`).
+
+#### Skill list
+
+The list shows the skills that pass the current search and filter. Each skill
+occupies two lines:
 
 - line 1: the skill name
 - line 2: one dim metadata line containing `source` when the skill is in the
@@ -154,44 +206,69 @@ Each skill occupies two lines:
 
 Both lines are truncated with an ellipsis (`…`) when they exceed the pane
 width. The selected skill's two lines are highlighted with an elevated
-background band and accent-colored name. The list is windowed around the
+background band and an accent-colored name; the band alone marks the selection,
+so no caret or pointer is drawn on the row. The list is windowed around the
 selection so it always fits the pane height without overflowing the frame.
 
-Moving through the list immediately updates the detail pane. Pressing enter is not required.
+Moving through the list immediately updates the Details pane. Pressing enter is
+not required. When the search or filter changes the set of listed skills, the
+selection stays on a listed skill and the Details pane follows it.
 
-### Pane 3: Detail
+### Pane 3: Details
 
-The detail pane is vertical:
+The Details pane stacks its sections top to bottom, each separated from the next
+by a horizontal divider line so the sections read as distinct blocks:
 
 ```text
-Skill title
-Source metadata (dimmed, each field truncated to one line)
-Tabs
-Files section header (for References/Scripts/Assets)
-File list
-Content section header with scroll percentage
-Content
+Meta block   (skill name + source fields)
+─────────────
+Tab bar      ((i) SKILL.md (r) References (s) Scripts (a) Assets)
+─────────────
+File list    (References/Scripts/Assets only, when files exist)
+─────────────
+Content      (rendered, with a scrollbar down the right edge)
 ```
 
-The detail header fields (description, source, sourceUrl, skillPath, path) are
-each truncated to a single line so the header height is deterministic and the
-content viewport can be sized to the remaining rows.
+#### Meta block
 
-Tabs:
+The meta block shows, each on its own line, truncated with an ellipsis when it
+exceeds the pane width:
+
+- the skill name
+- `source` (when the skill is in the lockfile)
+- `sourceUrl` (when present)
+- `skillPath` (when present)
+- the local filesystem `path` (always)
+
+The description is not shown in the meta block. The full frontmatter, including
+the description, appears in the `SKILL.md` content instead (see below), so
+repeating it here would be redundant.
+
+#### Tabs
 
 - `i` — `SKILL.md`
 - `r` — References
 - `s` — Scripts
 - `a` — Assets
 
-The `SKILL.md` tab renders the Markdown body only; YAML frontmatter is stripped
-before rendering. `SKILL.md` has no file list. References, Scripts, and Assets
-show a file list above content when files exist.
+#### SKILL.md content
 
-For tabs with a file list, a `Files` and a `Content` section header are shown.
-The header for the currently focused subfocus (file list vs content) is marked
-with a leading `▸` pointer and accent styling; the other is dimmed. The
-`Content` header also shows a scroll percentage, e.g. `Content (42%)`.
+The `SKILL.md` tab shows the whole `SKILL.md` file: its YAML frontmatter first,
+then the rendered Markdown body. The frontmatter is shown verbatim, including
+its opening and closing `---` fence lines and every field, not just name and
+description. It is shown as a fenced YAML block so the Markdown renderer treats
+the `---` lines as literal text rather than as horizontal rules (rendering them
+as horizontal rules is what previously dropped the fence lines). The body below
+it renders as Markdown as normal. `SKILL.md` has no file list.
+
+#### File list and content for References / Scripts / Assets
+
+References, Scripts, and Assets show a file list above the content when files
+exist. `tab` toggles which of the two, the file list or the content, `j` / `k`
+act on. The section that `j` / `k` currently act on is marked by drawing its
+divider line in the accent color; the other divider is dim. There is no separate
+`Files` or `Content` text header and no scroll percentage; the divider lines and
+the scrollbar carry that information instead.
 
 Assets are list-only in v1. The selected asset content area shows:
 
@@ -199,35 +276,63 @@ Assets are list-only in v1. The selected asset content area shows:
 No preview available
 ```
 
+#### Content scrollbar
+
+When the rendered content is taller than the visible content area, a scrollbar
+is drawn down the right edge of the content. The scrollbar is a vertical bar the
+height of the content area, with a solid segment whose length is the fraction of
+the content that is visible and whose position tracks how far the content is
+scrolled. When all the content fits, no scrollbar is drawn.
+
 ## Navigation
 
 Global keys:
 
-- `1` — focus scope pane
-- `2` — focus skill list pane
-- `3` — focus detail pane
-- `/` — show shortcuts modal
+- `1` — focus Scope pane
+- `2` — focus Skills pane
+- `3` — focus Details pane
+- `/` — focus the search box (in the Skills pane)
+- `?` — show the help modal
 - `:` — open command palette
 - `q` — quit
 
-Skill list pane:
+Skills pane:
 
 - `j` / `k` — move selection down/up
 - `h` — move focus to the pane on the left
 - `l` / `enter` — move focus to the pane on the right
+- `/` — focus the search box
+- `f` — focus the filter radio group
+- `r` — reset the search text and the filter to `All`
 
-Pane focus moves one pane at a time and clamps at the edges (`h` on the scope
-pane and `l` on the detail pane are no-ops).
+While the search box is focused:
 
-Detail pane:
+- typing narrows the list
+- `enter` — leave the search box, keeping the text and the narrowed list
+- `esc` — clear the text and leave the search box
+
+While the filter group is focused:
+
+- `j` / `k` — move between `All` / `Remote` / `Local`
+- `space` — select the option under the cursor
+- `c` — clear back to `All`
+- `esc` / `enter` — leave the filter group
+
+Pane focus moves one pane at a time and clamps at the edges (`h` on the Scope
+pane and `l` on the Details pane are no-ops).
+
+Details pane (the scroll and subfocus keys act only while the Details pane is
+focused; `i`/`s`/`a` switch tabs from any pane, and `r` shows References only
+while the Details pane is focused):
 
 - `i` — show `SKILL.md` tab
-- `r` — show References tab
+- `r` — show References tab (only while the Details pane is focused)
 - `s` — show Scripts tab
 - `a` — show Assets tab
-- `tab` — toggle subfocus between file list and content for tabs with file lists
-- `j` / `k` — move selected file when file-list subfocus is active
-- `j` / `k` — scroll content one line when content subfocus is active
+- `tab` — toggle whether `j` / `k` act on the file list or the content, for tabs
+  with a file list
+- `j` / `k` — move the selected file when the file list is active
+- `j` / `k` — scroll content one line when the content is active
 - `ctrl+d` / `ctrl+u` — scroll content half-page down/up
 - `ctrl+f` / `ctrl+b` — scroll content full-page down/up
 - `gg` / `G` — jump content to top/bottom
@@ -238,7 +343,15 @@ Command palette:
 - `:` — open command palette
 - `a` — add skill
 - `d` — delete selected skill
+- `u` — update all skills (runs `npx skills@latest update`)
 - `esc` — close command palette or modal
+
+### Help modal
+
+`?` opens a modal that lists every key binding grouped by context (global,
+Skills pane, Details pane, command palette). It is built from the same binding
+definitions the app uses to handle keys, so the modal and the real behavior
+cannot fall out of step. `esc` or `?` closes it.
 
 ## Startup dependency check
 
@@ -317,13 +430,28 @@ If the selected skill is not present in the lockfile, remove the selected skill 
 
 After deletion, Trainer refreshes from disk.
 
+## Update flow
+
+`:u` updates all installed skills. It suspends the TUI and runs interactive
+`npx skills@latest update` directly in the terminal, the same suspend-and-run
+mechanism the add flow uses, so the user sees and can answer any prompts. After
+the command exits, Trainer resumes and refreshes from disk. Exit code does not
+prevent the refresh.
+
+Update requires `npx`. When `npx` is unavailable, `:u` is disabled and shows an
+explanatory message, the same way `:a` is.
+
 ## Rendering
 
 Markdown rendering:
 
 - Use Glamour for `SKILL.md` and Markdown references.
-- Strip YAML frontmatter before rendering the `SKILL.md` body (the scanner
-  already returns the parsed body; render that rather than the raw file).
+- Show the `SKILL.md` frontmatter, do not strip it. The scanner keeps the raw
+  frontmatter block (both `---` fence lines and every field, verbatim) alongside
+  the body. The `SKILL.md` tab wraps that raw block in a fenced YAML code block
+  and places it above the Markdown body, then renders the whole thing through
+  Glamour. Wrapping it in a code block keeps Glamour from treating the `---`
+  lines as horizontal rules, so the fences and all fields are shown.
 - Use a custom Gruvbox Dark Hard Glamour style built from the theme palette
   (Glamour ships no Gruvbox style, so it is configured via a custom
   `ansi.StyleConfig`). Do not use Glamour's built-in `dark` style.
@@ -346,11 +474,26 @@ Asset rendering:
 - Go 1.26.4
 - golangci-lint 2.12.2 as the project linter
 - Bubble Tea v2 for the application model and update loop
-- Bubbles for viewport, text input, list, and help primitives
+- Bubbles v2 for the interactive primitives:
+  - `viewport` for the scrollable Details content
+  - `textinput` for the search box and the add-skill source field
+  - `help` and `key` for the `?` help modal and its binding definitions
+- `github.com/sahilm/fuzzy` for fuzzy search matching (the same library the
+  Bubbles `list` component uses internally)
 - Lip Gloss v2 for layout and styling
 - Glamour v2 for Markdown rendering
-- Huh v2 for modal forms, select prompts, and confirmations
 - Chroma for syntax highlighting
+
+The add-skill wizard, command palette, and delete confirmation are built on the
+Bubbles primitives above with plain key handling. Rebuilding the add-skill
+wizard on Huh v2 is a planned change tracked as its own slice in the
+implementation plan; it is not used yet, and no code depends on it.
+
+Prefer an existing, well-maintained dependency over a hand-built widget whenever
+one fits. Where no off-the-shelf component fits (the filter radio group and the
+content scrollbar), build the minimum on top of the components' public data
+(for example the `viewport`'s line counts and scroll fraction) rather than
+reimplementing what a component already does.
 
 The Go module path is:
 
@@ -452,3 +595,13 @@ Test coverage should include:
 - add command construction with and without selected SSH key
 - delete strategy selection for skills in the lockfile vs. skills only on disk
 - basic Bubble Tea update behavior for pane focus, tab selection, and skill selection
+- search narrows the skill list and `esc` restores it in full
+- the origin filter narrows the list to `Remote` or `Local` and `c` clears it
+- `r` in the Skills pane resets both search and filter
+- the `SKILL.md` tab shows the frontmatter fences and a frontmatter field that
+  is neither name nor description
+- the Details pane fills the full terminal width (the joined frame width equals
+  the terminal width)
+- the content scrollbar appears only when content overflows the visible area
+- the `?` help modal lists the key bindings
+- `:u` builds the `npx skills@latest update` command and is disabled without `npx`

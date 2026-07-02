@@ -112,6 +112,22 @@ func TestSelectedRowIsStyledDifferently(t *testing.T) {
 	}
 }
 
+func TestSelectedRowHasNoCaret(t *testing.T) {
+	m := NewModel(browseResult())
+
+	if strings.Contains(plain(view(m)), "> alpha") {
+		t.Errorf("expected no caret before the selected skill name, got:\n%s", plain(view(m)))
+	}
+}
+
+func TestMetaBlockOmitsDescription(t *testing.T) {
+	m := NewModel(browseResult())
+
+	if strings.Contains(plain(view(m)), "First skill") {
+		t.Errorf("expected the description to be omitted from the Details meta block, got:\n%s", plain(view(m)))
+	}
+}
+
 func TestQuitReturnsQuitCmd(t *testing.T) {
 	m := NewModel(browseResult())
 

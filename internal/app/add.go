@@ -117,9 +117,7 @@ func (m Model) refreshFromDisk() Model {
 	m.skills = result.Skills
 	m.scope = result.Scope
 	m.warnings = result.Warnings
-	if m.selected >= len(m.skills) {
-		m.selected = 0
-	}
+	m.clampSelection()
 	m.fileSel = 0
 	m.subfocus = subfocusList
 	m.syncContent()

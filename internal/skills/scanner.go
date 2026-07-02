@@ -54,7 +54,7 @@ func buildSkill(name, dir, skillPath string, locks map[string]LockEntry) Skill {
 	if err != nil {
 		skill.Warnings = append(skill.Warnings, fmt.Sprintf("read SKILL.md: %v", err))
 	} else {
-		fm, body, perr := ParseSkillMarkdown(content)
+		fm, raw, body, perr := ParseSkillMarkdown(content)
 		if perr != nil {
 			skill.Warnings = append(skill.Warnings, fmt.Sprintf("frontmatter: %v", perr))
 		}
@@ -63,6 +63,7 @@ func buildSkill(name, dir, skillPath string, locks map[string]LockEntry) Skill {
 		}
 		skill.Description = fm.Description
 		skill.Body = body
+		skill.Frontmatter = raw
 	}
 
 	skill.References = collectFiles(dir, "references")

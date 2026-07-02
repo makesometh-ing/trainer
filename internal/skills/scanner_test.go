@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -160,6 +161,38 @@ func TestScanGlobalAbsentLockfileLeavesLockNil(t *testing.T) {
 	}
 	for _, w := range result.Warnings {
 		t.Errorf("unexpected scan warning: %s", w)
+	}
+}
+
+const frontmatterSkillMd = `---
+name: fm-skill
+description: A skill with extra frontmatter.
+license: MIT
+allowed-tools: Read, Grep
+---
+
+# FM Skill
+
+Body content here.
+`
+
+func TestScanGlobalKeepsRawFrontmatter(t *testing.T) {
+	root := t.TempDir()
+	writeSkill(t, root, "fm-skill", frontmatterSkillMd)
+
+	result := ScanGlobal(root, filepath.Join(root, "missing.json"))
+
+	if len(result.Skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(result.Skills))
+	}
+	fm := result.Skills[0].Frontmatter
+	for _, want := range []string{"name: fm-skill", "license: MIT", "allowed-tools: Read, Grep"} {
+		if !strings.Contains(fm, want) {
+			t.Errorf("frontmatter missing %q; got:\n%s", want, fm)
+		}
+	}
+	if strings.Count(fm, "---") < 2 {
+		t.Errorf("expected both --- fence lines; got:\n%s", fm)
 	}
 }
 

@@ -19,11 +19,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deleteFinishedMsg:
 		m = m.refreshFromDisk()
 		return m, nil
+	case updateFinishedMsg:
+		m = m.refreshFromDisk()
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.help {
+		return m.handleHelpKey(msg)
+	}
 	if m.wizard != nil {
 		return m.handleWizardKey(msg)
 	}
@@ -33,12 +39,30 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.palette {
 		return m.handlePaletteKey(msg)
 	}
+	if m.skillsMode == modeSearch {
+		return m.handleSearchKey(msg)
+	}
+	if m.skillsMode == modeFilter {
+		return m.handleFilterKey(msg)
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case ":":
 		m.palette = true
 		m.status = ""
+		return m, nil
+	case "?":
+		m.help = true
+		return m, nil
+	case "/":
+		m.focus = paneSkills
+		m.skillsMode = modeSearch
+		return m, m.search.Focus()
+	case "f":
+		m.focus = paneSkills
+		m.skillsMode = modeFilter
+		m.filterCursor = m.filter
 		return m, nil
 	case "1":
 		m.focus = paneScope
@@ -59,7 +83,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		m.setTab(tabSkill)
 	case "r":
-		m.setTab(tabReferences)
+		// r resets search and filter in the Skills pane, but selects the
+		// References tab in the Details pane.
+		if m.focus == paneSkills {
+			m.resetSearchFilter()
+		} else {
+			m.setTab(tabReferences)
+		}
 	case "s":
 		m.setTab(tabScripts)
 	case "a":
@@ -196,6 +226,9 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		m.palette = false
 		return m.startDelete()
+	case "u":
+		m.palette = false
+		return m.runUpdate()
 	}
 	return m, nil
 }

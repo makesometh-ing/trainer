@@ -11,6 +11,7 @@ type Skill struct {
 	Name        string
 	Description string
 	Body        string
+	Frontmatter string
 	Path        string
 	SkillPath   string
 	References  []SkillFile

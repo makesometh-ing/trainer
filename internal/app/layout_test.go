@@ -15,7 +15,7 @@ func TestPaneLabelsShowShortcuts(t *testing.T) {
 	m := NewModel(browseResult())
 
 	out := view(m)
-	for _, want := range []string{"(1) Scope", "(2) Skills", "(3) Detail"} {
+	for _, want := range []string{"(1) Scope", "(2) Skills", "(3) Details"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected pane label %q, got:\n%s", want, out)
 		}
@@ -47,7 +47,7 @@ func TestTooSmallTerminalShowsResizeMessage(t *testing.T) {
 	if !strings.Contains(out, "Too small") {
 		t.Errorf("expected too-small message, got:\n%s", out)
 	}
-	for _, unwanted := range []string{"(1) Scope", "(2) Skills", "(3) Detail"} {
+	for _, unwanted := range []string{"(1) Scope", "(2) Skills", "(3) Details"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("did not expect pane title %q while too small, got:\n%s", unwanted, out)
 		}
@@ -64,7 +64,7 @@ func TestGrowingBackRestoresLayout(t *testing.T) {
 	if strings.Contains(out, "Too small") {
 		t.Errorf("did not expect too-small message after growing, got:\n%s", out)
 	}
-	for _, want := range []string{"(1) Scope", "(2) Skills", "(3) Detail"} {
+	for _, want := range []string{"(1) Scope", "(2) Skills", "(3) Details"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected pane title %q restored, got:\n%s", want, out)
 		}
@@ -85,6 +85,18 @@ func TestPanesReflowToWidth(t *testing.T) {
 	}
 	if wide > 160 {
 		t.Errorf("frame width %d exceeds terminal width 160", wide)
+	}
+}
+
+func TestFrameFillsTerminalWidth(t *testing.T) {
+	for _, w := range []int{100, 120, 161} {
+		var m tea.Model = NewModel(browseResult())
+		m = resize(m, w, 40)
+		mm := m.(Model)
+		t.Logf("w=%d scope=%d list=%d detail=%d", w, mm.scopeWidth(), mm.listWidth(), mm.detailPaneWidth())
+		if gotW := lipgloss.Width(view(m)); gotW != w {
+			t.Errorf("frame width %d != terminal width %d (dead space or overflow)", gotW, w)
+		}
 	}
 }
 

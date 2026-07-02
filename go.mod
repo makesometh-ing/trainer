@@ -8,6 +8,7 @@ require (
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.4
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/sahilm/fuzzy v0.1.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

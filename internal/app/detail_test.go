@@ -9,9 +9,41 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/makesometh-ing/trainer/internal/skills"
 )
+
+func TestDetailFileListDoesNotOverflow(t *testing.T) {
+	dir := t.TempDir()
+	refDir := filepath.Join(dir, "references")
+	if err := os.MkdirAll(refDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var refs []skills.SkillFile
+	for i := 0; i < 80; i++ {
+		name := fmt.Sprintf("ref-%02d.md", i)
+		p := filepath.Join(refDir, name)
+		if err := os.WriteFile(p, []byte("# "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, skills.SkillFile{Name: name, Path: p})
+	}
+	res := skills.ScanResult{
+		Scope:  skills.Scope{Name: "Global", Path: dir},
+		Skills: []skills.Skill{{Name: "many", Path: dir, References: refs}},
+	}
+
+	const h = 40
+	var m tea.Model = NewModel(res)
+	m = resize(m, 120, h)
+	m = press(m, "3") // focus Details
+	m = press(m, "r") // References tab: 80 files
+
+	if gotH := lipgloss.Height(view(m)); gotH > h {
+		t.Errorf("detail file list overflowed the terminal: frame height %d > %d", gotH, h)
+	}
+}
 
 var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
@@ -62,6 +94,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 				Name:        "alpha",
 				Description: "First skill",
 				Body:        "# Alpha Overview\n\nHow to use alpha.\n",
+				Frontmatter: "---\nname: alpha\ndescription: First skill\nlicense: MIT\n---",
 				Path:        dir,
 				SkillPath:   skillPath,
 				References:  []skills.SkillFile{{Name: "guide.md", Path: refPath}},
@@ -84,20 +117,28 @@ func TestSkillTabRendersSkillBody(t *testing.T) {
 	}
 }
 
-func TestSkillTabHidesFrontmatter(t *testing.T) {
+func TestSkillTabShowsFrontmatter(t *testing.T) {
 	m := press(NewModel(detailResult(t)), "i")
 
 	out := plain(view(m))
-	if strings.Contains(out, "name: alpha") {
-		t.Errorf("expected SKILL.md tab to hide raw frontmatter, got %q", out)
+	// The frontmatter is shown in full: its fields, including one that is neither
+	// name nor description, and its fence lines.
+	for _, want := range []string{"name: alpha", "description: First skill", "license: MIT"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected SKILL.md tab to show frontmatter field %q, got:\n%s", want, out)
+		}
 	}
-	if strings.Contains(out, "description: First skill") {
-		t.Errorf("expected SKILL.md tab to hide raw frontmatter, got %q", out)
+	if !strings.Contains(out, "---") {
+		t.Errorf("expected SKILL.md tab to show the frontmatter --- fences, got:\n%s", out)
+	}
+	// The body still renders below the frontmatter.
+	if !strings.Contains(out, "Alpha Overview") {
+		t.Errorf("expected SKILL.md tab to also render the body, got:\n%s", out)
 	}
 }
 
 func TestReferencesTabShowsFileList(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "r")
+	m := press(press(NewModel(detailResult(t)), "3"), "r")
 
 	out := view(m)
 	if !strings.Contains(out, "guide.md") {
@@ -106,7 +147,7 @@ func TestReferencesTabShowsFileList(t *testing.T) {
 }
 
 func TestSelectingReferenceRendersMarkdown(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "r")
+	m := press(press(NewModel(detailResult(t)), "3"), "r")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Reference Heading") {
@@ -195,21 +236,25 @@ func sized(m tea.Model, w, h int) tea.Model {
 	return next
 }
 
-func TestContentShowsScrollIndicator(t *testing.T) {
+func TestContentScrollbarAppearsOnOverflow(t *testing.T) {
 	var m tea.Model = NewModel(longScriptResult(t))
 	m = sized(m, 120, 24)
 	m = press(m, "s")
-	m = press(m, "tab")
 
-	before := lineContaining(view(m), "%")
-	if before == "" {
-		t.Fatalf("expected a scroll percentage indicator on long content, got none")
+	out := plain(view(m))
+	if !strings.Contains(out, "█") {
+		t.Errorf("expected a scrollbar thumb on overflowing content, got:\n%s", out)
 	}
+}
 
-	m = press(m, "ctrl+d")
-	after := lineContaining(view(m), "%")
-	if after == before {
-		t.Errorf("expected scroll indicator to change after scrolling, got %q both times", before)
+func TestContentScrollbarAbsentWhenContentFits(t *testing.T) {
+	var m tea.Model = NewModel(scriptOnlyResult(t, "small.weirdext", "one\ntwo\n"))
+	m = sized(m, 120, 40)
+	m = press(m, "s")
+
+	out := plain(view(m))
+	if strings.Contains(out, "█") {
+		t.Errorf("expected no scrollbar when content fits the viewport, got:\n%s", out)
 	}
 }
 
@@ -265,25 +310,32 @@ func twoReferencesResult(t *testing.T) skills.ScanResult {
 	}
 }
 
-func TestSubfocusIndicatorShowsActiveSection(t *testing.T) {
+func TestNoTextSectionHeaders(t *testing.T) {
 	var m tea.Model = NewModel(twoReferencesResult(t))
 	m = sized(m, 120, 40)
 	m = press(m, "3")
 	m = press(m, "r")
 
-	listActive := lineContaining(view(m), "Files")
-	if !strings.Contains(listActive, "▸") {
-		t.Errorf("expected Files section marked active by default, got %q", listActive)
+	out := plain(view(m))
+	for _, unwanted := range []string{"▸ Files", "▸ Content", "Content ("} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("expected sections demarcated by dividers, not the text header %q, got:\n%s", unwanted, out)
+		}
 	}
+}
 
+func TestSubfocusIndicatorMovesWithTab(t *testing.T) {
+	var m tea.Model = NewModel(twoReferencesResult(t))
+	m = sized(m, 120, 40)
+	m = press(m, "3")
+	m = press(m, "r")
+
+	listView := view(m)
 	m = press(m, "tab")
-	contentActive := lineContaining(view(m), "Content")
-	if !strings.Contains(contentActive, "▸") {
-		t.Errorf("expected Content section marked active after tab, got %q", contentActive)
-	}
-	filesNowInactive := lineContaining(view(m), "Files")
-	if strings.Contains(filesNowInactive, "▸") {
-		t.Errorf("expected Files section no longer active after tab, got %q", filesNowInactive)
+	contentView := view(m)
+
+	if listView == contentView {
+		t.Errorf("expected the subfocus indicator to change when toggling file list vs content")
 	}
 }
 

@@ -71,6 +71,8 @@ internal/app/{theme,keymap,model,update,view}.go
 | 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | DONE |
 | 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | DONE |
 | 7 | Detail rendering & layout polish (post-smoke): frontmatter strip, Gruvbox Glamour theme, pane fit/windowing, row highlight, `h`/`l`/`enter` nav, subfocus + scroll indicators, tab keys `i/r/s/a` | new | DONE |
+| 8 | Search + filter + demarcated Details: search box, origin filter, full-width Details, frontmatter shown, content scrollbar, `?` help modal, `:u` update, no row caret, `Details` title | new | DONE |
+| 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | NOT DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
 
 ---
@@ -452,6 +454,205 @@ This slice was **not in the original plan** — it captures issues found during 
 
 ---
 
+## Slice 8: Search + filter + demarcated Details — DONE
+
+**Status:** Completed 2026-07-03. Verified with `make verify` (fmt-check, vet,
+test, lint: 0 issues), a binary build, and a rendered smoke against the real
+`~/.agents/skills` at 130×40 (search narrows the list, the origin filter
+narrows and clears, the Details pane fills the width and shows the frontmatter
+fences and every field above the body with a scrollbar, and the `?` help modal
+lists all bindings). Eighteen RED→GREEN cycles, each proven through `Update` and
+`View`. Existing tests that asserted the reversed behavior (frontmatter hidden,
+the `Content (NN%)` header, the `▸` section labels, the `(3) Detail` title, and
+`r`-as-References from any pane) were replaced with tests for the new behavior.
+
+### Implementation decisions & handoff notes for Slice 8 (READ before Slice 9+)
+
+> Decisions not dictated by the spec, review before relying on them:
+> (1) **Search is a Bubbles `textinput` + `github.com/sahilm/fuzzy` (FindNoSort,
+> so the list keeps name order).** Bubbles `list` was not adopted because its
+> filter is an on-demand `/` prompt, not the always-visible search box the
+> chosen design has.
+> (2) **The origin filter and the scrollbar have no off-the-shelf component**, so
+> they are built on public data: the filter is plain state rendered as a radio;
+> the scrollbar is drawn from `viewport.TotalLineCount` and `ScrollPercent`. No
+> scrolling or matching logic is reimplemented.
+> (3) **The Skills-pane search/filter/selection is Model fields plus a focused
+> `search.go` (with `visibleSkills` as the single source of truth), not a
+> separate Skills-pane type.** The plan proposed a distinct type; it was kept as
+> Model methods to avoid rewiring the selection/viewport/focus coupling. The
+> logic is now in one place and testable, but a full type extraction is still
+> available as a follow-up if the pane needs to be reused or swapped.
+> (4) **`r` is the only context-dependent key** (reset in Skills, References in
+> Details); `i`/`s`/`a` stay global. This is narrower than the spec's first
+> draft, which gated all tab keys.
+> (5) **The scrollbar reserves one column** (`scrollbarWidth`) inside the detail
+> content width; content wraps to `contentWidth() = detailWidth() - 1`.
+> (6) **`:u` reuses the add runner** (`WithAddRunner`) and is gated on the same
+> `addEnabled`/`NPXAvailable` flag as `:a`.
+
+### Files created/changed in Slice 8
+- `internal/skills/{frontmatter,skill,scanner}.go` — keep raw frontmatter block
+- `internal/actions/update.go` (+ test) — `UpdateCommand()`
+- `internal/app/search.go` — search + origin filter + `visibleSkills`
+- `internal/app/keys.go`, `internal/app/help.go` — `?` help modal via Bubbles `help`/`key`
+- `internal/app/updateskills.go` — `:u` flow
+- `internal/app/{model,update,view}.go` — wiring, dividers, scrollbar, `Details`
+- `internal/app/{scanner,browse,detail,layout,search,palette,help}_test.go` — integration tests
+
+**User-observable behavior:** The Skills pane has an always-visible search box
+and an origin filter (All / Remote / Local) above the list. `/` focuses search;
+typing narrows the list (fuzzy over name + source); `enter` keeps the narrowed
+list; `esc` clears it. `f` focuses the filter; `j`/`k` move between options;
+`space` selects; `c` clears to All. `r` in the Skills pane resets both. The
+Details pane is titled `Details`, fills the full terminal width, drops the
+description from its meta block, and shows the whole `SKILL.md` including its
+frontmatter (fences and all fields) above the rendered body. Its sections (meta,
+tabs, file list, content) are separated by divider lines; the content has a
+scrollbar and no percentage header; the selected skill row has no caret. `?`
+opens a help modal listing all bindings. `:u` runs `npx skills@latest update`.
+
+### Off-the-shelf component decisions (the "don't hand-roll" rule)
+
+- **Search box:** Bubbles `textinput`. **Matching:** `github.com/sahilm/fuzzy`
+  (the library the Bubbles `list` component uses internally).
+- **Help modal:** Bubbles `help` + `key`. Bindings are defined once as
+  `key.Binding` values and used both to handle keys and to render the modal, so
+  the two cannot drift apart.
+- **Content + scroll:** Bubbles `viewport` (already in use).
+- **Not adopting Bubbles `list`:** its filter is an on-demand `/` prompt, which
+  does not match the always-visible search and filter boxes in the chosen
+  design. `textinput` + `fuzzy` gives the persistent boxes using off-the-shelf
+  components.
+- **No off-the-shelf fit, built minimally on public data (documented as such):**
+  the origin filter radio (plain state + render) and the content scrollbar
+  (drawn from `viewport.TotalLineCount` / `VisibleLineCount` / `ScrollPercent`;
+  no scrolling logic is reimplemented).
+
+### Modularity
+
+The Skills-pane logic (search, filter, selection, windowing, row rendering) is
+currently inlined in the app `Model`. Extract it into a single Skills-pane type
+with a small interface (visible skills, selected skill, key handling, render) so
+the pane is a deep module rather than scattered fields and functions.
+
+**Files:**
+- Modify: `internal/skills/{frontmatter,skill,scanner}.go` — keep the raw
+  frontmatter block (fences + all fields) on `Skill`
+- Modify: `internal/skills/scanner_test.go` — fixture with a non-name/description
+  frontmatter field, asserted through `ScanGlobal`
+- Create: `internal/actions/update.go` + `update_test.go` — `UpdateCommand()`
+- Create: `internal/app/skilllist.go` — Skills-pane module (search + filter +
+  selection + render)
+- Create: `internal/app/keys.go` — `key.Binding` definitions shared by the key
+  handler and the help modal
+- Create: `internal/app/help.go` — `?` help modal via Bubbles `help`
+- Create: `internal/app/scrollbar.go` — scrollbar from `viewport` metrics
+- Modify: `internal/app/{model,update,view}.go` — wire the above, make `r`
+  context-dependent (reset in Skills, References in Details), `Details` title,
+  drop caret + description, dividers
+- Test: `internal/app/{search_test,filter_test,help_test,detail_test,layout_test,browse_test}.go`
+  — integration through `Update` (real key messages) and `View` over temp-dir /
+  in-memory fixtures
+
+**Interfaces produced:**
+- `Skill.Frontmatter string` — raw frontmatter block including both `---` fences
+- `func UpdateCommand() *exec.Cmd`
+- a Skills-pane type exposing visible/selected/update/view
+
+### RED then GREEN order (one behavior per cycle)
+
+Data + rendering of the SKILL.md frontmatter:
+
+1. **Scanner keeps the raw frontmatter.** Fixture `SKILL.md` whose frontmatter
+   has a field that is neither `name` nor `description` (e.g. `license: MIT`).
+   Assert (through `ScanGlobal`) the skill's raw frontmatter contains both `---`
+   fences and `license: MIT`.
+2. **`SKILL.md` tab shows the frontmatter and the body.** Build the model from
+   that fixture; on the `SKILL.md` tab assert `View()` shows `---`, `license:
+   MIT`, and a known body heading. (Proves frontmatter is no longer stripped.)
+
+Details pane shape:
+
+3. **Pane title is `(3) Details`.** Assert `View()` contains `(3) Details`.
+4. **Selected skill row has no caret.** Assert the selected row shows the name
+   without a leading `> ` (the elevated band marks selection, tested as in
+   Slice 7).
+5. **Meta block omits the description.** Fixture skill with a description; assert
+   the description text does not appear in the meta block (it still appears in
+   the `SKILL.md` content from cycle 2).
+6. **Details fills the full terminal width.** Send a `WindowSizeMsg(W, H)`;
+   assert the joined frame width equals `W` (equality, not `<= W`, so an
+   underfilled layout fails).
+
+Content section:
+
+7. **No `Content (NN%)` header.** Assert `View()` contains neither `Content (`
+   nor `%)`.
+8. **Scrollbar appears only on overflow.** Long content in a short pane: assert
+   a scrollbar glyph column is present. Short content that fits: assert it is
+   absent.
+
+Search:
+
+9. **`/` focuses search; typing narrows the list.** Skills `[alpha, beta,
+   gamma]`; `/` then type `be`; assert the list shows `beta` and not `alpha` /
+   `gamma`.
+10. **`enter` keeps the narrowed list and leaves search.** After typing, `enter`;
+    assert the list is still narrowed and a following `j` moves the selection
+    (not typed into the box).
+11. **`esc` clears search.** After typing, `esc`; assert all skills show again.
+
+Filter:
+
+12. **`Remote` shows only lockfile-backed skills.** Fixture: one locked, one
+    local; `f`, move to `Remote`, `space`; assert only the locked skill shows.
+13. **`Local` shows only on-disk skills; `c` clears to All.** Assert both steps.
+14. **Search and filter combine.** With a search term and `Remote` selected,
+    assert the list is the intersection.
+
+Reset and key gating:
+
+15. **`r` in the Skills pane resets search and filter.** Set both; focus Skills;
+    `r`; assert the full list is restored.
+16. **`r` in the Details pane selects the References tab.** Focus Details; `r`;
+    assert the References tab is active (confirms `r` is context-dependent: it
+    resets in the Skills pane but selects References in the Details pane).
+
+Help modal and update command:
+
+17. **`?` opens a help modal listing bindings.** `?`; assert `View()` shows the
+    search, filter, and quit bindings and their keys; `esc` closes it.
+18. **`:u` builds `npx skills@latest update`.** Unit-assert `UpdateCommand()`
+    argv exactly. App: `:u` runs the injected runner when `npx` is available and
+    shows an explanatory message (no run) when it is not.
+
+### Notes / open questions
+- Assert on plain substrings that survive Glamour/Lip Gloss, never full-frame
+  snapshots (per the standing plan rule).
+- The scrollbar glyph choice is a rendering detail; assert its presence/absence
+  on overflow, not exact characters.
+- Selection must index into the *visible* (searched + filtered) list; when the
+  visible set changes, keep the selection on a listed skill and follow it in the
+  Details pane.
+
+## Slice 9: Rebuild the add-skill wizard on Huh v2 — NOT DONE
+
+Recorded from a decision made while planning Slice 8. The add-skill wizard is
+currently hand-built on a Bubbles `textinput` and a plain key-driven SSH-key
+list; the spec's stack had named Huh v2 for forms but it was never added and no
+code uses it. This slice replaces the hand-built wizard with Huh v2.
+
+**Scope:** add the Huh v2 dependency; rebuild the source-input and SSH-key-select
+steps as a Huh form; keep the existing suspend-run-refresh flow and the injected
+runner so tests never shell out to `npx`. First confirm Huh v2 embeds cleanly in
+the Bubble Tea v2 model and is drivable through `Model.Update` with real key
+messages (the reason given for the original hand-roll); if it is not, record why
+before proceeding rather than silently hand-rolling again.
+
+**Kept out of Slice 8** so the search/filter/Details work stays a focused,
+shippable slice and the working add flow is not destabilised mid-change.
+
 ## Final slice: Full verification — NOT DONE
 
 Was Task 13. After all slices land:
@@ -464,12 +665,20 @@ go run ./cmd/trainer   # manual smoke against real ~/.agents/skills
 
 Manual smoke checklist:
 - TUI opens; left pane shows `Global`.
-- Middle pane lists skills from `~/.agents/skills`, selected row highlighted, meta shows source or `local`.
-- Detail pane updates as selection changes; header fields truncate to one line.
-- `i/r/s/a` switch tabs; file lists + rendering work; `SKILL.md` shows no raw frontmatter.
-- `h`/`l`/`enter` move focus between panes; `tab` toggles Files/Content subfocus (`▸` marker); content shows `Content (NN%)`.
-- `/` opens shortcuts; `:` opens the command palette (centered).
-- `:a` and `:d` behave per dependency status.
+- Skills pane lists skills from `~/.agents/skills`, selected row highlighted by
+  the band (no caret), meta shows source or `local`.
+- Search box: `/` focuses it, typing narrows the list, `enter` keeps the result,
+  `esc` clears it.
+- Filter: `f` focuses it, `space` picks `Remote`/`Local`, `c` clears; `r` in the
+  Skills pane resets search and filter together.
+- Details pane titled `Details`, fills to the terminal's right edge, meta has no
+  description; sections separated by dividers.
+- `i/r/s/a` switch tabs while Details is focused; file lists + rendering work;
+  `SKILL.md` shows the frontmatter (fences + all fields) above the body.
+- Content has a scrollbar when it overflows and no percentage header.
+- `?` opens the help modal listing all bindings; `esc` closes it.
+- `:` opens the command palette (centered); `:a`, `:d`, `:u` behave per
+  dependency status.
 - Resize: frame always fits; below 60×15 shows the too-small message and restores on grow.
 
 ---

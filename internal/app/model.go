@@ -3,6 +3,7 @@ package app
 import (
 	"os/exec"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
@@ -24,6 +25,11 @@ type Model struct {
 	skills   []skills.Skill
 	warnings []string
 
+	search       textinput.Model
+	filter       originFilter
+	filterCursor originFilter
+	skillsMode   skillsMode
+
 	focus    pane
 	selected int
 
@@ -43,6 +49,7 @@ type Model struct {
 	rescan       RescanFunc
 
 	palette bool
+	help    bool
 	status  string
 
 	wizard  *addWizard
@@ -104,6 +111,7 @@ func NewModel(result skills.ScanResult, opts ...Option) Model {
 		scope:               result.Scope,
 		skills:              result.Skills,
 		warnings:            result.Warnings,
+		search:              newSearchInput(),
 		focus:               paneSkills,
 		addEnabled:          true,
 		lockedDeleteEnabled: true,
@@ -132,14 +140,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) selectedSkill() (skills.Skill, bool) {
-	if m.selected < 0 || m.selected >= len(m.skills) {
+	vis := m.visibleSkills()
+	if m.selected < 0 || m.selected >= len(vis) {
 		return skills.Skill{}, false
 	}
-	return m.skills[m.selected], true
+	return vis[m.selected], true
 }
 
 func (m *Model) syncSize() {
-	m.content.SetWidth(m.detailWidth())
+	m.content.SetWidth(m.contentWidth())
 	m.content.SetHeight(m.paneContentHeight())
 	m.content.SetContent(m.currentContent())
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -35,6 +36,41 @@ func TestPaletteQuitsWithQ(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Error("expected q to quit from the palette")
+	}
+}
+
+func TestPaletteUpdateRunsWhenNPXAvailable(t *testing.T) {
+	ran := false
+	var m tea.Model = NewModel(browseResult(),
+		WithAddEnabled(true),
+		WithAddRunner(func(_ *exec.Cmd, _ func(error) tea.Msg) tea.Cmd {
+			ran = true
+			return nil
+		}),
+	)
+	m = press(m, ":")
+	press(m, "u") // the runner records the call via the ran closure
+	if !ran {
+		t.Error("expected :u to run the update command when npx is available")
+	}
+}
+
+func TestPaletteUpdateDisabledWithoutNPX(t *testing.T) {
+	ran := false
+	var m tea.Model = NewModel(browseResult(),
+		WithAddEnabled(false),
+		WithAddRunner(func(_ *exec.Cmd, _ func(error) tea.Msg) tea.Cmd {
+			ran = true
+			return nil
+		}),
+	)
+	m = press(m, ":")
+	m = press(m, "u")
+	if ran {
+		t.Error("expected :u not to run when npx is unavailable")
+	}
+	if !strings.Contains(view(m), "disabled") {
+		t.Errorf("expected an explanatory message when update is disabled, got:\n%s", view(m))
 	}
 }
 
