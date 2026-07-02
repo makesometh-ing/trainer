@@ -491,6 +491,29 @@ the `Content (NN%)` header, the `▸` section labels, the `(3) Detail` title, an
 > (6) **`:u` reuses the add runner** (`WithAddRunner`) and is gated on the same
 > `addEnabled`/`NPXAvailable` flag as `:a`.
 
+### Refinements after manual testing
+
+Fixes found by running the app, each proven by a test or a rendered smoke:
+- **No frontmatter gap; the scrollbar reaches the bottom.**
+  `render.TrimSurroundingBlankLines` (in `currentContent`) drops the leading and
+  trailing blank lines Glamour and Chroma frame content with. The content
+  viewport's height comes from `detailLayout`, the same computation `renderDetail`
+  draws with, so the height the content scrolls by equals the height it is drawn
+  at and the last line is reachable.
+- **Filter is horizontal:** `Filter ● All ○ Remote ○ Local` on one line, wrapping
+  between options in a narrow pane (a non-breaking space keeps each bullet with
+  its label). `h`/`l` move the filter cursor; `j`/`k` still move the skill list.
+- **Selection stays within the filtered list.** `moveSelection` walks
+  `visibleSkills`, not the full list, so `j`/`k` never land on a hidden skill.
+- **All detail keys are gated to Details focus** (`i`/`s`/`a`/`tab`/scroll); `r`
+  resets in the Skills pane. Partial gating read as inconsistent.
+- **Scripts and References show `No files`** when empty, like Assets.
+- **The selected file uses a highlight band**, not a caret, matching the skill list.
+- **Both modals (palette, help) are border-defined with no background fill**, so
+  per-span color resets cannot leave inconsistent background gaps. The help modal
+  is rendered from the `key.Binding` data with one key-column width and one key
+  color.
+
 ### Files created/changed in Slice 8
 - `internal/skills/{frontmatter,skill,scanner}.go` — keep raw frontmatter block
 - `internal/actions/update.go` (+ test) — `UpdateCommand()`

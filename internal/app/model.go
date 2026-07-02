@@ -147,13 +147,19 @@ func (m Model) selectedSkill() (skills.Skill, bool) {
 	return vis[m.selected], true
 }
 
-func (m *Model) syncSize() {
+func (m *Model) syncContentSize() {
+	rows, _, _ := m.detailLayout()
 	m.content.SetWidth(m.contentWidth())
-	m.content.SetHeight(m.paneContentHeight())
+	m.content.SetHeight(rows)
+}
+
+func (m *Model) syncSize() {
+	m.syncContentSize()
 	m.content.SetContent(m.currentContent())
 }
 
 func (m *Model) syncContent() {
+	m.syncContentSize()
 	m.content.SetContent(m.currentContent())
 	m.content.GotoTop()
 }

@@ -95,7 +95,7 @@ func TestSearchEscClearsAndRestores(t *testing.T) {
 func TestFilterRemoteShowsOnlyLocked(t *testing.T) {
 	var m tea.Model = NewModel(browseResult())
 	m = press(m, "f") // focus filter (cursor at All)
-	m = press(m, "j") // cursor -> Remote
+	m = press(m, "l") // cursor -> Remote
 	m = pressSpace(m) // apply Remote
 
 	out := plain(view(m))
@@ -110,8 +110,8 @@ func TestFilterRemoteShowsOnlyLocked(t *testing.T) {
 func TestFilterLocalAndClear(t *testing.T) {
 	var m tea.Model = NewModel(browseResult())
 	m = press(m, "f")
-	m = press(m, "j") // Remote
-	m = press(m, "j") // Local
+	m = press(m, "l") // Remote
+	m = press(m, "l") // Local
 	m = pressSpace(m) // apply Local
 
 	out := plain(view(m))
@@ -132,7 +132,7 @@ func TestFilterLocalAndClear(t *testing.T) {
 func TestSearchAndFilterCombine(t *testing.T) {
 	var m tea.Model = NewModel(mixedResult())
 	m = press(m, "f")
-	m = press(m, "j") // Remote
+	m = press(m, "l") // Remote
 	m = pressSpace(m)
 	m = press(m, "esc") // leave filter mode
 	m = press(m, "/")
@@ -150,7 +150,7 @@ func TestSearchAndFilterCombine(t *testing.T) {
 func TestResetInSkillsPaneClearsSearchAndFilter(t *testing.T) {
 	var m tea.Model = NewModel(browseResult())
 	m = press(m, "f")
-	m = press(m, "j")
+	m = press(m, "l")
 	m = pressSpace(m) // Remote
 	m = press(m, "esc")
 	m = press(m, "/")
@@ -179,5 +179,29 @@ func TestRInDetailPaneSelectsReferences(t *testing.T) {
 
 	if !strings.Contains(plain(view(m)), "a-guide.md") {
 		t.Errorf("expected 'r' in the Details pane to open References, got:\n%s", plain(view(m)))
+	}
+}
+
+func TestSelectionStaysWithinFilteredList(t *testing.T) {
+	// mixedResult has one local skill (avocado); navigating the filtered list
+	// must never select a skill outside it.
+	var m tea.Model = NewModel(mixedResult())
+	m = press(m, "j") // move down the full list first
+	m = press(m, "j")
+
+	m = press(m, "f")
+	m = press(m, "l") // cursor -> Remote
+	m = press(m, "l") // cursor -> Local
+	m = pressSpace(m) // apply Local (1 skill)
+	m = press(m, "esc")
+
+	for _, k := range []string{"j", "j", "k", "j"} {
+		m = press(m, k)
+		if _, ok := m.(Model).selectedSkill(); !ok {
+			t.Fatalf("after %q the list is non-empty but nothing is selected", k)
+		}
+	}
+	if !strings.Contains(plain(view(m)), "avocado") {
+		t.Errorf("expected the one local skill to stay selected, got:\n%s", plain(view(m)))
 	}
 }

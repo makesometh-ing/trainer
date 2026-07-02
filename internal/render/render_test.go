@@ -57,6 +57,15 @@ func TestCodeHighlightPreservesSource(t *testing.T) {
 	}
 }
 
+func TestTrimSurroundingBlankLines(t *testing.T) {
+	in := "\n\n  \nfirst\n\nsecond\n \n\n"
+	got := TrimSurroundingBlankLines(in)
+	want := "first\n\nsecond"
+	if got != want {
+		t.Errorf("TrimSurroundingBlankLines = %q, want %q", got, want)
+	}
+}
+
 func TestCodeUnknownExtensionFallsBackToPlainText(t *testing.T) {
 	src := "just some raw text\nwith lines\n"
 	out, err := Code(src, "notes.weirdext")

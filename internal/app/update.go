@@ -78,22 +78,37 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.focusLeft()
 	case "l", "right", "enter":
 		m.focusRight()
-	case "tab":
-		m.toggleSubfocus()
-	case "i":
-		m.setTab(tabSkill)
 	case "r":
-		// r resets search and filter in the Skills pane, but selects the
-		// References tab in the Details pane.
-		if m.focus == paneSkills {
+		// r is the one context-dependent key: it resets search and filter in the
+		// Skills pane, and selects the References tab in the Details pane.
+		switch m.focus {
+		case paneSkills:
 			m.resetSearchFilter()
-		} else {
+		case paneDetail:
 			m.setTab(tabReferences)
 		}
+	case "i", "s", "a", "tab", "ctrl+d", "ctrl+u", "ctrl+f", "ctrl+b", "g", "G":
+		// Tab, subfocus, and scroll keys act on the Details pane, so they apply
+		// only while it is focused.
+		if m.focus == paneDetail {
+			m.applyDetailKey(msg.String())
+		}
+	}
+	return m, nil
+}
+
+// applyDetailKey runs a Details-pane tab, subfocus, or scroll key. The caller
+// gates this on the Details pane being focused.
+func (m *Model) applyDetailKey(key string) {
+	switch key {
+	case "i":
+		m.setTab(tabSkill)
 	case "s":
 		m.setTab(tabScripts)
 	case "a":
 		m.setTab(tabAssets)
+	case "tab":
+		m.toggleSubfocus()
 	case "ctrl+d":
 		m.content.HalfPageDown()
 	case "ctrl+u":
@@ -107,19 +122,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "G":
 		m.content.GotoBottom()
 	}
-	return m, nil
 }
 
 func (m *Model) moveSelection(delta int) {
-	if len(m.skills) == 0 {
+	// Selection walks the visible (searched + filtered) list, not the full list,
+	// so it can never land on a skill the list is not showing.
+	vis := m.visibleSkills()
+	if len(vis) == 0 {
 		return
 	}
 	next := m.selected + delta
 	if next < 0 {
 		next = 0
 	}
-	if next >= len(m.skills) {
-		next = len(m.skills) - 1
+	if next >= len(vis) {
+		next = len(vis) - 1
 	}
 	if next != m.selected {
 		m.selected = next

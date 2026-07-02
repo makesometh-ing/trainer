@@ -109,7 +109,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 }
 
 func TestSkillTabRendersSkillBody(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "i")
+	m := press(press(NewModel(detailResult(t)), "3"), "i")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Alpha Overview") {
@@ -118,7 +118,7 @@ func TestSkillTabRendersSkillBody(t *testing.T) {
 }
 
 func TestSkillTabShowsFrontmatter(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "i")
+	m := press(press(NewModel(detailResult(t)), "3"), "i")
 
 	out := plain(view(m))
 	// The frontmatter is shown in full: its fields, including one that is neither
@@ -177,7 +177,7 @@ func scriptOnlyResult(t *testing.T, name, body string) skills.ScanResult {
 }
 
 func TestScriptsTabHighlightsCode(t *testing.T) {
-	m := press(NewModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "s")
+	m := press(press(NewModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "3"), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "func main") {
@@ -186,7 +186,7 @@ func TestScriptsTabHighlightsCode(t *testing.T) {
 }
 
 func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
-	m := press(NewModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "s")
+	m := press(press(NewModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "3"), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "raw plain content") {
@@ -195,7 +195,7 @@ func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
 }
 
 func TestAssetsTabShowsNoPreview(t *testing.T) {
-	m := press(NewModel(detailResult(t)), "a")
+	m := press(press(NewModel(detailResult(t)), "3"), "a")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "logo.png") {
@@ -239,6 +239,7 @@ func sized(m tea.Model, w, h int) tea.Model {
 func TestContentScrollbarAppearsOnOverflow(t *testing.T) {
 	var m tea.Model = NewModel(longScriptResult(t))
 	m = sized(m, 120, 24)
+	m = press(m, "3")
 	m = press(m, "s")
 
 	out := plain(view(m))
@@ -247,9 +248,28 @@ func TestContentScrollbarAppearsOnOverflow(t *testing.T) {
 	}
 }
 
+func TestScrollbarReachesBottom(t *testing.T) {
+	var m tea.Model = NewModel(longScriptResult(t)) // 100 lines: line-000..line-099
+	m = sized(m, 120, 30)
+	m = press(m, "3") // focus Details
+	m = press(m, "s") // Scripts tab
+	m = press(m, "G") // jump to the bottom of the content
+
+	out := plain(view(m))
+	if !strings.Contains(out, "█") {
+		t.Fatal("expected a scrollbar on overflowing content")
+	}
+	// The viewport's scroll height must match its render height, or the bottom is
+	// never reachable. After G the last content line is visible.
+	if !strings.Contains(out, "line-099") {
+		t.Errorf("expected the last line visible at the bottom after G, got:\n%s", out)
+	}
+}
+
 func TestContentScrollbarAbsentWhenContentFits(t *testing.T) {
 	var m tea.Model = NewModel(scriptOnlyResult(t, "small.weirdext", "one\ntwo\n"))
 	m = sized(m, 120, 40)
+	m = press(m, "3")
 	m = press(m, "s")
 
 	out := plain(view(m))
@@ -261,6 +281,7 @@ func TestContentScrollbarAbsentWhenContentFits(t *testing.T) {
 func TestContentScrollKeysMoveViewport(t *testing.T) {
 	var m tea.Model = NewModel(longScriptResult(t))
 	m = sized(m, 120, 24)
+	m = press(m, "3")
 	m = press(m, "s")
 
 	top := plain(view(m))
@@ -362,5 +383,48 @@ func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 	contentMode = press(contentMode, "j")
 	if strings.Contains(plain(view(contentMode)), "Bravo Heading") {
 		t.Errorf("expected j in content subfocus to leave file selection unchanged")
+	}
+}
+
+func TestSkillContentHasNoLeadingBlankLine(t *testing.T) {
+	m := NewModel(detailResult(t))
+
+	lines := strings.Split(plain(m.currentContent()), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		t.Errorf("expected SKILL.md content to start on real text, got a leading blank:\n%q", m.currentContent())
+	}
+}
+
+func TestScriptsAndReferencesShowNoFilesWhenEmpty(t *testing.T) {
+	res := skills.ScanResult{
+		Scope:  skills.Scope{Name: "Global", Path: "/root"},
+		Skills: []skills.Skill{{Name: "empty", Path: "/root/empty"}},
+	}
+	for _, tab := range []string{"s", "r"} {
+		var m tea.Model = NewModel(res)
+		m = sized(m, 120, 40)
+		m = press(m, "3")
+		m = press(m, tab)
+		if !strings.Contains(plain(view(m)), "No files") {
+			t.Errorf("expected tab %q with no files to show 'No files', got:\n%s", tab, plain(view(m)))
+		}
+	}
+}
+
+func TestSelectedFileUsesHighlightNotCaret(t *testing.T) {
+	var m tea.Model = NewModel(twoReferencesResult(t))
+	m = sized(m, 120, 40)
+	m = press(m, "3")
+	m = press(m, "r")
+
+	selected := lineContaining(view(m), "a-guide.md")
+	if strings.Contains(plain(selected), "> ") {
+		t.Errorf("expected no caret on the selected file, got %q", plain(selected))
+	}
+
+	m = press(m, "j") // move selection off a-guide
+	unselected := lineContaining(view(m), "a-guide.md")
+	if selected == unselected {
+		t.Errorf("expected the selected file to render with a highlight, differing from unselected")
 	}
 }

@@ -91,9 +91,9 @@ Trainer uses a three-pane TUI.
 ```text
 ┌ (1) Scope ┐ ┌ (2) Skills ───────────┐ ┌ (3) Details ──────────────────────┐
 │ Global    │ │ Search  ▏             │ │ skill-name                         │
-│           │ │ Filter  (•) All       │ │ source     owner/repo              │
-│           │ │         ( ) Remote    │ │ sourceUrl  https://…               │
-│           │ │         ( ) Local     │ │ skillPath  skills/…/SKILL.md       │
+│           │ │ Filter ●All ○Remote   │ │ source     owner/repo              │
+│           │ │ ○Local                │ │ sourceUrl  https://…               │
+│           │ │                       │ │ skillPath  skills/…/SKILL.md       │
 │           │ │ ─────────────────     │ │ path       /Users/…                │
 │           │ │ skill-name            │ │ ─────────────────────────────     │
 │           │ │   source or local     │ │ (i) SKILL.md (r) References …      │
@@ -145,9 +145,10 @@ discoverable without opening the help modal:
 
 Detail tab shortcuts deliberately avoid `j`/`k` (reserved for vim-style
 selection/scroll movement) so tab switching never conflicts with navigation.
-`i`, `s`, and `a` switch tabs from any pane. `r` is the one context-dependent
-key: in the Details pane it selects the References tab, and in the Skills pane
-it resets search and filter, so the letter serves both without a conflict.
+The detail tab keys act only while the Details pane is focused, so the same
+letters are free in the Skills pane. `r` is context-dependent: in the Details
+pane it selects the References tab; in the Skills pane it resets search and
+filter.
 
 ### Pane 1: Scope
 
@@ -186,8 +187,13 @@ came from:
 - `Remote` — skills that have a lockfile entry (installed from a source).
 - `Local` — skills with no lockfile entry (present only on disk).
 
+The three options are laid out on one horizontal line (`Filter ●All ○Remote
+○Local`), wrapping between options only when the pane is too narrow to fit them.
+The selected option is filled (`●`); the rest are hollow (`○`).
+
 - `f` moves focus into the filter group.
-- `j` / `k` move between the options while the group is focused.
+- `h` / `l` move the cursor left/right between the options while the group is
+  focused; `j` / `k` still move the skill selection.
 - `space` selects the option under the cursor.
 - `c` clears the selection back to `All`.
 
@@ -263,12 +269,14 @@ it renders as Markdown as normal. `SKILL.md` has no file list.
 
 #### File list and content for References / Scripts / Assets
 
-References, Scripts, and Assets show a file list above the content when files
-exist. `tab` toggles which of the two, the file list or the content, `j` / `k`
-act on. The section that `j` / `k` currently act on is marked by drawing its
-divider line in the accent color; the other divider is dim. There is no separate
-`Files` or `Content` text header and no scroll percentage; the divider lines and
-the scrollbar carry that information instead.
+References, Scripts, and Assets always show a file list above the content; it
+reads `No files` when the skill bundles none of that kind. The selected file is
+marked with an elevated highlight band and accent name, the same cue the skill
+list uses, not a caret. `tab` toggles which of the two, the file list or the
+content, `j` / `k` act on. The section that `j` / `k` currently act on is marked
+by drawing its divider line in the accent color; the other divider is dim. There
+is no separate `Files` or `Content` text header and no scroll percentage; the
+divider lines and the scrollbar carry that information instead.
 
 Assets are list-only in v1. The selected asset content area shows:
 
@@ -313,7 +321,8 @@ While the search box is focused:
 
 While the filter group is focused:
 
-- `j` / `k` — move between `All` / `Remote` / `Local`
+- `h` / `l` — move the cursor between `All` / `Remote` / `Local`
+- `j` / `k` — move the skill selection (unchanged)
 - `space` — select the option under the cursor
 - `c` — clear back to `All`
 - `esc` / `enter` — leave the filter group
@@ -321,12 +330,10 @@ While the filter group is focused:
 Pane focus moves one pane at a time and clamps at the edges (`h` on the Scope
 pane and `l` on the Details pane are no-ops).
 
-Details pane (the scroll and subfocus keys act only while the Details pane is
-focused; `i`/`s`/`a` switch tabs from any pane, and `r` shows References only
-while the Details pane is focused):
+Details pane (all of these keys act only while the Details pane is focused):
 
 - `i` — show `SKILL.md` tab
-- `r` — show References tab (only while the Details pane is focused)
+- `r` — show References tab (in the Skills pane, `r` resets search and filter)
 - `s` — show Scripts tab
 - `a` — show Assets tab
 - `tab` — toggle whether `j` / `k` act on the file list or the content, for tabs
@@ -457,6 +464,9 @@ Markdown rendering:
   `ansi.StyleConfig`). Do not use Glamour's built-in `dark` style.
 - Use word wrapping based on the detail content width (pane width minus its
   border and padding).
+- Trim the leading and trailing blank lines that renderers frame content with,
+  so the content sits flush under its divider (no gap above the frontmatter) and
+  the scrollbar reaches the bottom when the last line of real text is in view.
 
 Script rendering:
 

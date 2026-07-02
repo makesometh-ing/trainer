@@ -139,14 +139,20 @@ func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc", "enter", "f":
 		m.skillsMode = modeList
-	case "j", "down":
+	case "l", "right":
+		// The filter is laid out left to right (All Remote Local), so l/h move
+		// the cursor along it; j/k stay list navigation.
 		if m.filterCursor < originLocal {
 			m.filterCursor++
 		}
-	case "k", "up":
+	case "h", "left":
 		if m.filterCursor > originAll {
 			m.filterCursor--
 		}
+	case "j", "down":
+		m.moveDown()
+	case "k", "up":
+		m.moveUp()
 	case "space":
 		m.filter = m.filterCursor
 		m.clampSelection()
@@ -174,17 +180,25 @@ func (m Model) renderSearchBox() string {
 }
 
 func (m Model) renderFilter() string {
-	lines := []string{lipgloss.NewStyle().Foreground(m.theme.Muted).Render("Filter")}
+	label := lipgloss.NewStyle().Foreground(m.theme.Muted).Render("Filter ")
+	opts := make([]string, 0, len(originOptions))
 	for _, o := range originOptions {
-		marker := "( )"
+		marker := "○"
 		if m.filter == o {
-			marker = "(•)"
+			marker = "●"
 		}
 		style := lipgloss.NewStyle().Foreground(m.theme.Fg)
 		if m.skillsMode == modeFilter && m.filterCursor == o {
 			style = lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true)
 		}
-		lines = append(lines, "  "+style.Render(marker+" "+o.label()))
+		// A non-breaking space keeps the bullet visually separated from the label
+		// while still making each option one token, so a narrow pane wraps between
+		// options, never inside one.
+		opts = append(opts, style.Render(marker+"\u00a0"+o.label()))
 	}
-	return strings.Join(lines, "\n")
+	w := m.listWidth() - paneBorderPad
+	if w < 1 {
+		w = 1
+	}
+	return lipgloss.NewStyle().Width(w).Render(label + strings.Join(opts, " "))
 }

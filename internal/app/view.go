@@ -98,7 +98,6 @@ func (m Model) renderPalette() string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.ActiveBorder).
-		Background(m.theme.Elevated).
 		Padding(0, 2).
 		Render(body)
 }
@@ -213,39 +212,7 @@ func (m Model) renderDetail() string {
 	meta := m.metaBlock(title, s, textW)
 	tabs := m.renderTabs()
 	fileLines := m.fileListLines()
-	hasFiles := fileLines != nil
-
-	// Split the rows below the tab bar between the file list and the content.
-	// A file tab uses three dividers (after meta, before files, before content);
-	// other tabs use two (after meta, before content).
-	dividers := 2
-	if hasFiles {
-		dividers = 3
-	}
-	budget := m.paneContentHeight() - len(meta) - 1 /* tab bar */ - dividers
-	if budget < 2 {
-		budget = 2
-	}
-
-	// The file list takes at most half the budget and is windowed around the
-	// selected file, so a skill with many files never grows the pane past the
-	// terminal. The content viewport gets the remaining rows.
-	contentRows := budget
-	if hasFiles {
-		fileCap := len(fileLines)
-		if half := budget / 2; fileCap > half {
-			fileCap = half
-		}
-		if fileCap < 1 {
-			fileCap = 1
-		}
-		start, end := windowBounds(len(fileLines), m.fileSel, fileCap)
-		fileLines = fileLines[start:end]
-		contentRows = budget - len(fileLines)
-	}
-	if contentRows < 1 {
-		contentRows = 1
-	}
+	contentRows, fileCap, hasFiles := m.detailLayout()
 
 	m.content.SetWidth(m.contentWidth())
 	m.content.SetHeight(contentRows)
@@ -254,6 +221,8 @@ func (m Model) renderDetail() string {
 	parts := append([]string{}, meta...)
 	parts = append(parts, m.divider(textW, false), tabs)
 	if hasFiles {
+		start, end := windowBounds(len(fileLines), m.fileSel, fileCap)
+		fileLines = fileLines[start:end]
 		parts = append(parts, m.divider(textW, m.subfocus == subfocusList))
 		parts = append(parts, fileLines...)
 		parts = append(parts, m.divider(textW, m.subfocus == subfocusContent))
@@ -263,6 +232,52 @@ func (m Model) renderDetail() string {
 	parts = append(parts, m.renderContentWithScrollbar(contentRows)...)
 
 	return m.pane(paneDetail, m.detailPaneWidth(), m.paneHeight(), strings.Join(parts, "\n"))
+}
+
+// detailLayout splits the Details pane's rows into the content viewport height,
+// the file-list window capacity, and whether a file list is shown. renderDetail
+// and the viewport sizing both use it, so the height the content scrolls by is
+// the same height it is drawn at (otherwise the scrollbar cannot reach the
+// bottom because the viewport clamps scrolling to the wrong height).
+func (m Model) detailLayout() (contentRows, fileCap int, hasFiles bool) {
+	s, ok := m.selectedSkill()
+	if !ok {
+		return m.paneContentHeight(), 0, false
+	}
+	meta := m.metaBlock("", s, m.detailWidth())
+	fileLines := m.fileListLines()
+	hasFiles = fileLines != nil
+
+	dividers := 2 // after meta, before content
+	if hasFiles {
+		dividers = 3 // after meta, before files, before content
+	}
+	budget := m.paneContentHeight() - len(meta) - 1 /* tab bar */ - dividers
+	if budget < 2 {
+		budget = 2
+	}
+	if !hasFiles {
+		return budget, 0, false
+	}
+
+	// The file list takes at most half the budget and is windowed around the
+	// selection; the content viewport gets the rest.
+	fileCap = len(fileLines)
+	if half := budget / 2; fileCap > half {
+		fileCap = half
+	}
+	if fileCap < 1 {
+		fileCap = 1
+	}
+	fileRows := len(fileLines)
+	if fileRows > fileCap {
+		fileRows = fileCap
+	}
+	contentRows = budget - fileRows
+	if contentRows < 1 {
+		contentRows = 1
+	}
+	return contentRows, fileCap, true
 }
 
 // divider renders a horizontal rule spanning the detail content width. The rule
@@ -373,10 +388,9 @@ func (m Model) fileListLines() []string {
 	if m.tab == tabSkill {
 		return nil
 	}
+	// References, Scripts, and Assets all show a file list, which reads "No files"
+	// when the skill bundles none of that kind.
 	files, _ := m.currentFilesAndRenderer()
-	if files == nil && m.tab != tabAssets {
-		return nil
-	}
 	return m.renderFileList(files)
 }
 
@@ -419,6 +433,10 @@ func (m Model) renderTabs() string {
 }
 
 func (m Model) currentContent() string {
+	return render.TrimSurroundingBlankLines(m.rawContent())
+}
+
+func (m Model) rawContent() string {
 	if m.tab == tabSkill {
 		s, ok := m.selectedSkill()
 		if !ok {
@@ -514,15 +532,27 @@ func (m Model) detailWidth() int {
 
 func (m Model) renderFileList(files []skills.SkillFile) []string {
 	if len(files) == 0 {
-		return []string{"No files"}
+		return []string{lipgloss.NewStyle().Foreground(m.theme.Muted).Render("No files")}
+	}
+	textW := m.detailWidth()
+	if textW < 1 {
+		textW = 1
 	}
 	lines := make([]string, 0, len(files))
 	for i, f := range files {
-		prefix := "  "
+		name := "  " + f.Name
 		if i == m.fileSel {
-			prefix = "> "
+			// The selected file is marked by an elevated highlight band, matching
+			// the skill list, rather than a caret.
+			lines = append(lines, lipgloss.NewStyle().
+				Foreground(m.theme.Accent).
+				Background(m.theme.Elevated).
+				Bold(true).
+				Width(textW).
+				Render(truncate(name, textW)))
+			continue
 		}
-		lines = append(lines, prefix+f.Name)
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Fg).Render(truncate(name, textW)))
 	}
 	return lines
 }

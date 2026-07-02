@@ -27,8 +27,9 @@ func defaultKeyBindings() keyBindings {
 		skills: []key.Binding{
 			binding("j/k", "move selection"),
 			binding("/", "search"),
-			binding("f", "filter (All/Remote/Local)"),
-			binding("space", "select filter option"),
+			binding("f", "focus filter"),
+			binding("h/l", "move filter option (when focused)"),
+			binding("space", "apply filter option"),
 			binding("c", "clear filter"),
 			binding("r", "reset search + filter"),
 		},
