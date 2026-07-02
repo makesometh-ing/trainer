@@ -66,7 +66,7 @@ internal/app/{theme,keymap,model,update,view}.go
 | Foundation | Module + core data types | 1 | DONE |
 | 1 (tracer) | Browse: scope pane, skill list, `j/k` selection, detail header, `q` quit | 2, 3, 4, browse parts of 9/10/11 | DONE |
 | 2 | Inspect: tabs `a/b/c/d`, file lists, Glamour/Chroma render, asset no-preview | 8, detail parts of 9/10/11 | DONE |
-| 3 | Startup dependency check + continue prompt, disable `:a` when no `npx` | 6, part of 12 | NOT DONE |
+| 3 | Startup dependency check + continue prompt, disable `:a` when no `npx` | 6, part of 12 | DONE |
 | 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | NOT DONE |
 | 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | NOT DONE |
 | 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | NOT DONE |
@@ -202,9 +202,31 @@ Absorbs old Task 8 and the remaining detail-pane portions of 9/10/11.
 
 ---
 
-## Slice 3: Startup dependency check — NOT DONE
+## Slice 3: Startup dependency check — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues) and a smoke build of `cmd/trainer` (prints `node 26.4.0`, `npm 11.17.0`, `npx 11.17.0` — `v`-prefixed versions normalized).
 
 **User-observable behavior:** Before the TUI opens, Trainer prints detected `node`/`npm`/`npx` versions. If `npx` is missing, it warns that adding is disabled and prompts `Continue? [y/N]`; declining exits before the TUI. If the user continues without `npx`, `:a` is disabled with an explanatory message and lockfile-backed delete is disabled.
+
+### Implementation decisions & handoff notes for Slice 3 (READ before Slice 4+)
+
+> Decisions I made that were NOT dictated by the spec/plan, and must be reviewed:
+> (1) `NewModel` uses functional options defaulting to `true` (vs a struct arg).
+> (2) A **minimal command palette** was built to test cycle 5 through the real key path — **enabled `:a` and `:d` currently do nothing but close the palette**; real wizards are Slices 4/5.
+> (3) `printDependencies` prints `<name> not found` for missing tools (not in spec).
+> (4) Disabled-add status wording `"Adding skills is disabled: npx is not available."` is my phrasing.
+
+- **Detection is injectable.** `runtime.Check(look LookPathFunc, version VersionFunc)` takes the PATH lookup and version-reader as function values, so tests never shell out. `runtime.CheckDefault()` wires the real `SystemLookPath` (`exec.LookPath`) and `SystemVersion` (`exec.Command(name, "--version")`) for `main.go`.
+- **`DependencyStatus` shape:** `Node`, `NPM`, `NPX` are each a `runtime.Tool{Name, Path, Version}`; `Missing []string` lists absent tools; `NPXAvailable bool` is the single gate for add + lockfile-backed delete. Versions are normalized by stripping a leading `v` and trimming, so `v26.4.0` and `26.4.0` both render `26.4.0`.
+- **`ConfirmContinueWithoutNPX(in io.Reader, out io.Writer) bool`** writes the warning + `Continue? [y/N] ` prompt to `out`, reads one line from `in`; only `y`/`yes` (case-insensitive) return true, empty/junk default to false. `fmt.Fprint*` returns discarded (`_, _ =`) for errcheck.
+- **Capability flags live on `Model` via functional options.** `app.NewModel(result, opts ...Option)` accepts `app.WithAddEnabled(bool)` and `app.WithLockedDeleteEnabled(bool)`; both default `true` (existing `NewModel(result)` calls unchanged). Read with `m.AddEnabled()` / `m.LockedDeleteEnabled()`.
+- **Command palette landed here (minimally).** `:` opens the palette (`m.palette`, rendered `: (a) add  (d) delete  esc cancel`). While open, `handlePaletteKey` intercepts keys so `a`/`d` are palette commands, NOT the SKILL.md/Assets tabs. `esc` closes it. When add is disabled, `:a` sets `m.status` to `Adding skills is disabled: npx is not available.` (rendered in `theme.Error`). **Slice 4 must build the real add wizard on this hook** — currently enabled `:a` and `:d` just close the palette with no action.
+- **`main.go` flow:** home → `CheckDefault()` → `printDependencies` → if `!NPXAvailable`, `ConfirmContinueWithoutNPX` (exit 0 on decline) → scan → `NewModel` with capability flags → run.
+- **Deps:** no new modules; `internal/runtime` is stdlib-only (`bufio`, `fmt`, `io`, `os/exec`; `slices`/`strings` in tests).
+
+### Files created in Slice 3
+- `internal/runtime/dependencies.go`, `internal/runtime/dependencies_test.go`, `internal/app/dependency_test.go`
+- Modified `internal/app/{model,update,view}.go` and `cmd/trainer/main.go`.
 
 Absorbs old Task 6 and the dependency-gating portion of Task 12.
 

@@ -18,9 +18,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.palette {
+		return m.handlePaletteKey(msg)
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case ":":
+		m.palette = true
+		m.status = ""
+		return m, nil
 	case "1":
 		m.focus = paneScope
 	case "2":
@@ -143,4 +150,19 @@ func (m *Model) setTab(t tab) {
 	m.fileSel = 0
 	m.subfocus = subfocusList
 	m.syncContent()
+}
+
+func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.palette = false
+	case "a":
+		m.palette = false
+		if !m.addEnabled {
+			m.status = "Adding skills is disabled: npx is not available."
+		}
+	case "d":
+		m.palette = false
+	}
+	return m, nil
 }

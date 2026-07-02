@@ -28,24 +28,57 @@ type Model struct {
 
 	content viewport.Model
 
+	addEnabled          bool
+	lockedDeleteEnabled bool
+
+	palette bool
+	status  string
+
 	width  int
 	height int
 }
 
-func NewModel(result skills.ScanResult) Model {
+type Option func(*Model)
+
+func WithAddEnabled(enabled bool) Option {
+	return func(m *Model) {
+		m.addEnabled = enabled
+	}
+}
+
+func WithLockedDeleteEnabled(enabled bool) Option {
+	return func(m *Model) {
+		m.lockedDeleteEnabled = enabled
+	}
+}
+
+func NewModel(result skills.ScanResult, opts ...Option) Model {
 	m := Model{
-		theme:    GruvboxDarkHard(),
-		scope:    result.Scope,
-		skills:   result.Skills,
-		warnings: result.Warnings,
-		focus:    paneSkills,
+		theme:               GruvboxDarkHard(),
+		scope:               result.Scope,
+		skills:              result.Skills,
+		warnings:            result.Warnings,
+		focus:               paneSkills,
+		addEnabled:          true,
+		lockedDeleteEnabled: true,
 		content: viewport.New(
 			viewport.WithWidth(defaultContentWidth),
 			viewport.WithHeight(defaultContentHeight),
 		),
 	}
+	for _, opt := range opts {
+		opt(&m)
+	}
 	m.syncContent()
 	return m
+}
+
+func (m Model) AddEnabled() bool {
+	return m.addEnabled
+}
+
+func (m Model) LockedDeleteEnabled() bool {
+	return m.lockedDeleteEnabled
 }
 
 func (m Model) Init() tea.Cmd {

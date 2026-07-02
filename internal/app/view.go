@@ -17,9 +17,27 @@ func (m Model) View() tea.View {
 	detail := m.renderDetail()
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, scope, list, detail)
+	if m.palette {
+		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderPalette())
+	}
+	if m.status != "" {
+		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderStatus())
+	}
 	v := tea.NewView(body)
 	v.AltScreen = true
 	return v
+}
+
+func (m Model) renderPalette() string {
+	return lipgloss.NewStyle().
+		Foreground(m.theme.Accent).
+		Render(": (a) add  (d) delete  esc cancel")
+}
+
+func (m Model) renderStatus() string {
+	return lipgloss.NewStyle().
+		Foreground(m.theme.Error).
+		Render(m.status)
 }
 
 func (m Model) renderScope() string {
