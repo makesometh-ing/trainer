@@ -48,13 +48,16 @@
 
 ---
 
-## Task 1: Go module and core data types
+## Task 1: Go module and core data types — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make fmt-check vet test lint` (lint: 0 issues).
 
 **Files:**
 - Create: `go.mod`
 - Create: `cmd/trainer/main.go`
 - Create: `internal/skills/skill.go`
-- Test: `internal/skills/skill_test.go`
+- ~~Test: `internal/skills/skill_test.go`~~ — intentionally NOT created (see caveats)
+- Create: `Makefile` (added; maintenance-task entrypoint, not in original plan)
 
 **Interfaces:**
 - Produces:
@@ -66,19 +69,19 @@
 
 ### Steps
 
-- [ ] Initialize module:
+- [x] Initialize module:
 
 ```bash
 go mod init github.com/makesometh-ing/trainer
 ```
 
-- [ ] Add initial dependencies:
+- [x] Add initial dependencies:
 
 ```bash
 go get charm.land/bubbletea/v2 charm.land/lipgloss/v2 charm.land/glamour/v2 charm.land/huh/v2 github.com/charmbracelet/bubbles github.com/alecthomas/chroma/v2 gopkg.in/yaml.v3
 ```
 
-- [ ] Create `internal/skills/skill.go` with these types:
+- [x] Create `internal/skills/skill.go` with these types:
 
 ```go
 package skills
@@ -126,15 +129,30 @@ type ScanResult struct {
 }
 ```
 
-- [ ] Create a minimal `cmd/trainer/main.go` that prints a placeholder until the Bubble Tea app exists.
+- [x] Create a minimal `cmd/trainer/main.go` that prints a placeholder until the Bubble Tea app exists.
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 go test ./...
 ```
 
 Expected: pass.
+
+### Verification (actual)
+
+- `make build` — clean
+- `make vet` — clean
+- `make test` — pass (`[no test files]` for both packages)
+- `make lint` (golangci-lint 2.12.2) — 0 issues
+- Deps fetched at latest, then `go mod tidy` removed them (nothing imports them yet).
+
+### Caveats / gotchas for later tasks
+
+- **No `skill_test.go`.** Task 1 is pure data types; a field-shape test would be tautological (per TDD skill) and give zero confidence. First real integration test lands at Task 4 (`ScanGlobal`) over a temp-dir skill tree. User approved this.
+- **go.mod is currently minimal.** `go mod tidy` dropped all charm/chroma/yaml deps because no code imports them yet. They will re-resolve at latest as each subsequent task adds imports — do NOT be surprised go.mod is nearly empty right now.
+- **Makefile added** (not in original plan) as the entrypoint for all maintenance tasks. Always run `make lint` as part of verification (user standing instruction). `make verify` runs `fmt-check vet test lint`.
+- Latest dep versions in use: bubbletea/v2 v2.0.7, lipgloss/v2 v2.0.4, glamour/v2 v2.0.1, huh/v2 v2.0.3, bubbles v1.0.0, chroma/v2 v2.27.0, yaml.v3 v3.0.1.
 
 ---
 
