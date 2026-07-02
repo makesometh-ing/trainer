@@ -21,7 +21,7 @@ func (m Model) View() tea.View {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderWizard())
 	}
 	if m.palette {
-		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderPalette())
+		body = m.overlayCenter(body, m.renderPalette())
 	}
 	if m.status != "" {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderStatus())
@@ -31,10 +31,50 @@ func (m Model) View() tea.View {
 	return v
 }
 
+func (m Model) overlayCenter(base, modal string) string {
+	baseW := lipgloss.Width(base)
+	baseH := lipgloss.Height(base)
+	modalW := lipgloss.Width(modal)
+	modalH := lipgloss.Height(modal)
+
+	x := max(0, (baseW-modalW)/2)
+	y := max(0, (baseH-modalH)/2)
+
+	comp := lipgloss.NewCompositor(
+		lipgloss.NewLayer(base).Z(0),
+		lipgloss.NewLayer(modal).X(x).Y(y).Z(1),
+	)
+	return comp.Render()
+}
+
 func (m Model) renderPalette() string {
-	return lipgloss.NewStyle().
+	title := lipgloss.NewStyle().
 		Foreground(m.theme.Accent).
-		Render(": (a) add  (d) delete  esc cancel")
+		Bold(true).
+		Render("Commands")
+
+	cmd := func(key, label string) string {
+		k := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(" + key + ")")
+		l := lipgloss.NewStyle().Foreground(m.theme.Fg).Render(label)
+		return k + " " + l
+	}
+
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		"",
+		cmd("a", "add skill"),
+		cmd("d", "delete skill"),
+		cmd("q", "quit"),
+		"",
+		lipgloss.NewStyle().Foreground(m.theme.Muted).Render("esc cancel"),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.ActiveBorder).
+		Background(m.theme.Elevated).
+		Padding(0, 2).
+		Render(body)
 }
 
 func (m Model) renderStatus() string {
