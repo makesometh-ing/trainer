@@ -65,10 +65,11 @@ internal/app/{theme,keymap,model,update,view}.go
 |-------|--------------------------|-------------------|--------|
 | Foundation | Module + core data types | 1 | DONE |
 | 1 (tracer) | Browse: scope pane, skill list, `j/k` selection, detail header, `q` quit | 2, 3, 4, browse parts of 9/10/11 | DONE |
-| 2 | Inspect: tabs `a/b/c/d`, file lists, Glamour/Chroma render, asset no-preview | 8, detail parts of 9/10/11 | NOT DONE |
+| 2 | Inspect: tabs `a/b/c/d`, file lists, Glamour/Chroma render, asset no-preview | 8, detail parts of 9/10/11 | DONE |
 | 3 | Startup dependency check + continue prompt, disable `:a` when no `npx` | 6, part of 12 | NOT DONE |
 | 4 | Add: `:a` wizard, SSH key select, suspend + run, refresh | 5, 7(add), part of 12 | NOT DONE |
 | 5 | Delete: `:d` confirm, lockfile vs on-disk strategy, refresh | 7(delete), part of 12 | NOT DONE |
+| 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | NOT DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
 
 ---
@@ -161,7 +162,9 @@ go run ./cmd/trainer   # manual smoke: list appears, j/k works, q quits
 
 ---
 
-## Slice 2: Inspect skill content — NOT DONE
+## Slice 2: Inspect skill content — DONE
+
+**Status:** Completed 2026-07-02. Verified with `make verify` (fmt-check, vet, test, lint: 0 issues) and `go build ./...`.
 
 **User-observable behavior:** In the detail pane, `a/b/c/d` switch tabs (`SKILL.md`, References, Scripts, Assets). References/Scripts/Assets show a file list above content; `tab` toggles subfocus between list and content; scroll keys (`j/k`, `ctrl+d/u`, `ctrl+f/b`, `gg/G`) move content. `SKILL.md` and markdown references render via Glamour; scripts highlight via Chroma (plain-text fallback for unknown extensions); assets show `No preview available`.
 
@@ -187,6 +190,15 @@ Absorbs old Task 8 and the remaining detail-pane portions of 9/10/11.
 ### Notes / open questions
 - Glamour/Chroma output includes ANSI escapes; assert on plain substrings that survive rendering, not exact formatting.
 - Prefer a Bubbles `viewport.Model` for scrolling (per stack); confirm v2 compatibility.
+
+### Caveats / gotchas discovered during Slice 2 (READ before Slice 3+)
+
+- **Scrolling uses the Bubbles `viewport.Model` (`charm.land/bubbles/v2 v2.1.0`), as the plan required.** The model holds a `viewport.Model` in `content`; scroll keys delegate to its pager methods — `ctrl+d`→`HalfPageDown()`, `ctrl+u`→`HalfPageUp()`, `ctrl+f`→`PageDown()`, `ctrl+b`→`PageUp()`, `gg`→`GotoTop()`, `G`→`GotoBottom()`, and `j/k` in content subfocus → `ScrollDown/Up`. Content is pushed in via `SetContent`; sizing via `SetWidth/SetHeight`. No hand-rolled offset math.
+- **`syncContent` / `syncSize` keep the viewport in step with model state.** `syncContent` (called on skill change, file change, tab change) resets content and `GotoTop`. `syncSize` (called on `WindowSizeMsg`) sets width/height then content. `contentHeight()` = `m.height - detailChromeHeight` (chrome constant = 10, floor 3) and `defaultContentHeight = 20`/`defaultContentWidth = 80` when no size has arrived yet. Slice 6 (layout polish) should replace the magic `detailChromeHeight` with real measured pane geometry.
+- **Chroma `gruvbox` style + `terminal256` formatter** chosen to match the Gruvbox theme. `render.Code` returns raw source unchanged when `lexers.Match` is nil or `lexers.Fallback` (unknown extension), which is what the plain-text-fallback test asserts.
+- **`a` (SKILL.md) tab renders the on-disk `SkillPath` body via Glamour**, not the in-memory `Description`. This was added beyond the plan's 7-step order to satisfy the slice's stated "SKILL.md renders via Glamour" behavior; it reuses `renderReferenceContent` (markdown path). The scanner already returns the body from `ParseSkillMarkdown`, but the view re-reads the file by path for consistency with references/scripts.
+- **Subfocus model:** `subfocusList` (default) vs `subfocusContent`, toggled by `tab`. `j/k` route through `moveContent`: on a file tab in list subfocus they move `fileSel` (and re-sync content to top); in content subfocus they scroll the viewport; on the SKILL.md tab they always scroll; otherwise they move the skill selection (browse). Switching tabs (`setTab`) resets `fileSel`, subfocus, and re-syncs content.
+- **Deps added:** `charm.land/glamour/v2 v2.0.1`, `charm.land/bubbles/v2 v2.1.0` (latest stable — v2.0.0 and v2.1.0 are the only non-pre-release v2 tags), `github.com/alecthomas/chroma/v2 v2.27.0` (+ transitive goldmark/bluemonday/etc). glamour v2 API: `glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(width))` then `r.Render(content)`.
 
 ---
 
@@ -287,6 +299,30 @@ Absorbs the delete half of Task 7 and the delete/refresh portion of Task 12.
 ### Notes / open questions
 - Filesystem delete (skill only on disk) is the one action safe to execute for real in tests (temp dir). Lockfile-backed delete stays construction-only + injected runner.
 - Deletion refresh should reuse the same rescan path as add (Slice 4) to avoid divergence.
+
+---
+
+## Slice 6: Layout polish — NOT DONE
+
+**User-observable behavior:** Pane and detail-tab labels include their keyboard shortcut (`(1) Scope`, `(2) Skills`, `(3) Detail`; `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets`). The TUI fills the full terminal and reflows the three panes on resize. When the terminal is smaller than a minimum width/height, the app replaces the layout with a centered `[Too small] Resize terminal to view the full app` message and restores the layout once the terminal grows back.
+
+New slice (not in the original horizontal plan) — captures full-screen/resize handling and shortcut discoverability surfaced during Slice 2.
+
+**Files:**
+- Modify: `internal/app/{view,model}.go` — labels with shortcuts, width/height-aware pane sizing, too-small guard
+- Test: `internal/app/layout_test.go` — drive `WindowSizeMsg` through `Update`, assert `View()`
+
+### RED then GREEN order
+
+1. **Pane labels show shortcuts.** Assert `View()` contains `(1) Scope`, `(2) Skills`, `(3) Detail`.
+2. **Detail tab labels show shortcuts.** Assert tabs render as `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets`.
+3. **Too-small terminal shows the resize message.** Send a `WindowSizeMsg` below the minimum; assert `View()` contains the too-small message and none of the pane titles.
+4. **Growing back restores the layout.** After a too-small size, send a large `WindowSizeMsg`; assert pane titles return and the message is gone.
+5. **Panes reflow to terminal width.** At two different widths, assert the rendered frame width tracks the terminal width (substring/width check, not a snapshot).
+
+### Notes / open questions
+- Pick concrete minimum thresholds (e.g. width < 60 or height < 15) and encode them as named constants.
+- Keep assertions on substrings and coarse width checks; never snapshot the full frame (Lip Gloss padding is brittle).
 
 ---
 

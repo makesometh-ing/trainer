@@ -89,14 +89,38 @@ If a locked field is missing, omit that field. Always show the local filesystem 
 Trainer uses a three-pane TUI.
 
 ```text
-┌ Scope ┐ ┌ Skills ───────────────┐ ┌ Detail ───────────────────────────┐
-│Global │ │ skill-name            │ │ skill-name                         │
-│       │ │ source/path metadata  │ │ source / sourceUrl / skillPath/path│
-│       │ │ ...                   │ │ [a SKILL] [b Refs] [c Scripts] [d Assets]
-│       │ │                       │ │ file list, when relevant           │
-│       │ │                       │ │ rendered content                   │
-└───────┘ └───────────────────────┘ └───────────────────────────────────┘
+┌ (1) Scope ┐ ┌ (2) Skills ───────────┐ ┌ (3) Detail ───────────────────────┐
+│Global     │ │ skill-name            │ │ skill-name                         │
+│           │ │ source/path metadata  │ │ source / sourceUrl / skillPath/path│
+│           │ │ ...                   │ │ [(a) SKILL] [(b) Refs] [(c) Scripts] [(d) Assets]
+│           │ │                       │ │ file list, when relevant           │
+│           │ │                       │ │ rendered content                   │
+└───────────┘ └───────────────────────┘ └────────────────────────────────────┘
 ```
+
+### Full-screen and resize behavior
+
+Trainer runs full-screen (alt screen) and fills the entire terminal by
+default. The three panes reflow to the current terminal width and height on
+every resize.
+
+If the terminal is too small to render the app usefully, Trainer replaces the
+three-pane layout with a centered message such as:
+
+```text
+[Too small] Resize terminal to view the full app
+```
+
+The app returns to the normal layout as soon as the terminal is resized large
+enough. A minimum width/height threshold defines "too small".
+
+### Pane and tab labels
+
+Each pane and detail tab label includes its keyboard shortcut so shortcuts are
+discoverable without opening the shortcuts modal:
+
+- Panes: `(1) Scope`, `(2) Skills`, `(3) Detail`
+- Detail tabs: `(a) SKILL.md`, `(b) References`, `(c) Scripts`, `(d) Assets`
 
 ### Pane 1: Scope
 
