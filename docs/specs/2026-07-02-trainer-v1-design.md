@@ -488,8 +488,9 @@ resumes and refreshes every scope from disk. Exit code does not prevent refresh.
 
 `:d` starts delete confirmation for the selected skill.
 
-The confirmation asks `Delete <skill-name>?` and explains that this removes the
-skill and may leave broken symlinks. `y` confirms; any other key cancels.
+The confirmation asks `Delete <skill-name> from the <scope-name> (<Section>) scope?`
+and explains that this removes the skill from that scope and may leave broken
+symlinks. `y` confirms; any other key cancels.
 
 If the selected skill's scope has a lock listing it, run `npx skills remove`,
 adding `--global` when the skill is in a Global-section scope and omitting it for

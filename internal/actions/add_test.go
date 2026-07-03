@@ -8,7 +8,7 @@ import (
 func TestAddCommandWithoutKey(t *testing.T) {
 	cmd := AddCommand("owner/repo", "")
 
-	wantArgs := []string{"npx", "skills", "add", "owner/repo", "-g"}
+	wantArgs := []string{"npx", "skills", "add", "owner/repo"}
 	if !slices.Equal(cmd.Args, wantArgs) {
 		t.Errorf("args = %v, want %v", cmd.Args, wantArgs)
 	}
@@ -22,7 +22,7 @@ func TestAddCommandWithoutKey(t *testing.T) {
 func TestAddCommandWithKeySetsGitSSHCommand(t *testing.T) {
 	cmd := AddCommand("git@github.com:owner/repo.git", "/home/me/.ssh/id_ed25519")
 
-	wantArgs := []string{"npx", "skills", "add", "git@github.com:owner/repo.git", "-g"}
+	wantArgs := []string{"npx", "skills", "add", "git@github.com:owner/repo.git"}
 	if !slices.Equal(cmd.Args, wantArgs) {
 		t.Errorf("args = %v, want %v", cmd.Args, wantArgs)
 	}

@@ -10,6 +10,7 @@ import (
 
 type deleteConfirm struct {
 	skill skills.Skill
+	scope skills.Scope
 }
 
 func (m Model) startDelete() (tea.Model, tea.Cmd) {
@@ -18,8 +19,18 @@ func (m Model) startDelete() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.confirm = &deleteConfirm{skill: s}
+	m.confirm = &deleteConfirm{skill: s, scope: m.selectedScopeDef()}
 	return m, nil
+}
+
+// selectedScopeDef returns the scope the selected skill belongs to. The
+// selected skill always belongs to the selected scope (visibleSkills never
+// leaves it), so the scope is authoritative for the delete's target.
+func (m Model) selectedScopeDef() skills.Scope {
+	if m.selectedScope < 0 || m.selectedScope >= len(m.results) {
+		return skills.Scope{}
+	}
+	return m.results[m.selectedScope].Scope
 }
 
 func (m Model) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -40,6 +51,7 @@ type deleteFinishedMsg struct{}
 
 func (m Model) runDelete() (tea.Model, tea.Cmd) {
 	skill := m.confirm.skill
+	global := m.confirm.scope.Section == skills.SectionGlobal
 	m.confirm = nil
 
 	switch actions.DeleteStrategy(skill) {
@@ -51,7 +63,7 @@ func (m Model) runDelete() (tea.Model, tea.Cmd) {
 		if m.deleteRunner == nil {
 			return m, nil
 		}
-		cmd := actions.DeleteCommand(skill.Name)
+		cmd := actions.DeleteCommand(skill.Name, global)
 		run := m.deleteRunner(cmd, func(error) tea.Msg { return deleteFinishedMsg{} })
 		return m, run
 	default:
@@ -70,11 +82,14 @@ func (m Model) renderConfirm() string {
 		Bold(true).
 		Render("Delete skill")
 
+	scope := m.confirm.scope
+	where := scope.Name + " (" + string(scope.Section) + ")"
+
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		"",
-		"Delete "+m.confirm.skill.Name+"?",
-		"This removes it from the global skills directory and may leave broken symlinks.",
+		"Delete "+m.confirm.skill.Name+" from the "+where+" scope?",
+		"This removes it from that scope and may leave broken symlinks.",
 		"",
 		lipgloss.NewStyle().Foreground(m.theme.Muted).Render("y confirm  any other key cancel"),
 	)

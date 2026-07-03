@@ -12,7 +12,7 @@ type Strategy int
 
 const (
 	// StrategyNPXRemove removes a skill tracked in the lockfile via
-	// `npx skills remove -g <name>`.
+	// `npx skills remove <name>`.
 	StrategyNPXRemove Strategy = iota
 	// StrategyFilesystem removes a skill that exists only on disk by
 	// deleting its directory directly.
@@ -29,9 +29,15 @@ func DeleteStrategy(skill skills.Skill) Strategy {
 	return StrategyFilesystem
 }
 
-// DeleteCommand builds the `npx skills remove -g <name>` command.
-func DeleteCommand(skillName string) *exec.Cmd {
-	return exec.Command("npx", "skills", "remove", "-g", skillName)
+// DeleteCommand builds the `npx skills remove <name>` command, adding --global
+// when the skill lives in a Global-section scope so the removal targets the
+// right scope deterministically.
+func DeleteCommand(skillName string, global bool) *exec.Cmd {
+	args := []string{"skills", "remove", skillName}
+	if global {
+		args = append(args, "--global")
+	}
+	return exec.Command("npx", args...)
 }
 
 // RemoveDirectory deletes a skill directory from disk.

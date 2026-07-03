@@ -30,10 +30,19 @@ func TestDeleteStrategyOnDiskSkill(t *testing.T) {
 	}
 }
 
-func TestDeleteCommandArgv(t *testing.T) {
-	cmd := DeleteCommand("alpha")
+func TestDeleteCommandGlobalArgv(t *testing.T) {
+	cmd := DeleteCommand("alpha", true)
 
-	wantArgs := []string{"npx", "skills", "remove", "-g", "alpha"}
+	wantArgs := []string{"npx", "skills", "remove", "alpha", "--global"}
+	if !slices.Equal(cmd.Args, wantArgs) {
+		t.Errorf("args = %v, want %v", cmd.Args, wantArgs)
+	}
+}
+
+func TestDeleteCommandProjectArgv(t *testing.T) {
+	cmd := DeleteCommand("alpha", false)
+
+	wantArgs := []string{"npx", "skills", "remove", "alpha"}
 	if !slices.Equal(cmd.Args, wantArgs) {
 		t.Errorf("args = %v, want %v", cmd.Args, wantArgs)
 	}

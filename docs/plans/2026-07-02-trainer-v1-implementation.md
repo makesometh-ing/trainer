@@ -74,7 +74,7 @@ internal/app/{theme,keymap,model,update,view,scope}.go
 | 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | DONE |
 | Final | Full verification + manual smoke | 13 | DONE |
 | 10 | Multi-scope browsing: harness registry, symlink-aware scanner, two-level Scope pane (Global / Project sections) + counts, per-scope lock, scope-scoped list, hide empty scopes/sections | new (v1.0) | DONE |
-| 11 | Scope-aware actions: add drops `-g` (npx prompts scope); delete passes `--global` by the skill's scope; rescan all scopes | new (v1.0) | TODO |
+| 11 | Scope-aware actions: add passes no scope flag (npx prompts scope); delete passes `--global` by the skill's scope; rescan all scopes | new (v1.0) | DONE |
 
 ---
 
@@ -917,33 +917,35 @@ to `[]ScanResult` + `selectedScope`, then five view/navigation cycles.
 
 ---
 
-## Slice 11: Scope-aware actions — TODO
+## Slice 11: Scope-aware actions — DONE
 
-**Status:** Not started. Target v1.0. Builds on Slice 10's scope model.
+**Status:** Done. v1.0. Builds on Slice 10's scope model.
 
 **Seams under test:**
 - `actions.AddCommand`, `actions.DeleteCommand` — argv (justified unit tests: pure construction).
-- `Model.Update` / `Model.View` — the add wizard runs without `-g`; delete dispatch by the selected scope; filesystem delete over a real temp dir.
+- `Model.Update` / `Model.View` — the add wizard runs with no scope flag; delete dispatch by the selected scope; filesystem delete over a real temp dir.
 
-**User-observable behavior:** `:a` runs `npx skills add <source>` with no `-g`, so npx's own prompts choose skills, agents, and Project/Global. `:d` on a lock-listed skill runs `npx skills remove <name>`, adding `--global` when the skill is in a Global scope (Trainer sets the flag from the skill's own scope, so the delete is deterministic); on a local/harness skill it deletes that skill's own directory entry at its scope path (removing a symlink leaves the canonical skill). `:u` is unchanged (already omits `-g`). Every action rescans all scopes.
+**User-observable behavior:** `:a` runs `npx skills add <source>` with no scope flag, so npx's own prompts choose skills, agents, and Project/Global. `:d` on a lock-listed skill runs `npx skills remove <name>`, adding `--global` when the skill is in a Global-section scope (Trainer sets the flag from the skill's own scope, so the delete is deterministic); on a local/harness skill it deletes that skill's own directory entry at its scope path (removing a symlink leaves the canonical skill). `:u` is unchanged (already omits any scope flag). Every action rescans all scopes.
 
-**Files:**
-- Modify: `internal/actions/add.go` — `AddCommand` drops `-g`.
-- Modify: `internal/actions/delete.go` — `DeleteCommand(name, global)` builds `remove <name>` plus `--global` when global; strategy stays lock-vs-disk, the filesystem path is the scope-specific `skill.Path`.
-- Modify: `internal/app/{add,delete}.go` — delete confirm text no longer says "global"; delete acts on the selected scope's skill; refresh covers all scopes.
-- Test: `internal/actions/{add,delete}_test.go`, `internal/app/{add,delete}_test.go`.
+**Files changed:**
+- `internal/actions/add.go` — `AddCommand(source, keyPath)` builds `npx skills add <source>` with no scope flag; `GIT_SSH_COMMAND` still set when a key is given.
+- `internal/actions/delete.go` — `DeleteCommand(name, global)` builds `remove <name>` plus `--global` when `global`; strategy stays lock-vs-disk, the filesystem path is the scope-specific `skill.Path`.
+- `internal/app/delete.go` — `deleteConfirm` carries the selected skill's `skills.Scope`; `startDelete` captures it via `selectedScopeDef`; `runDelete` passes `scope.Section == SectionGlobal` to `DeleteCommand`; the confirm text names the scope (`<name> (<Section>)`) instead of always saying "global". Refresh runs through `deleteFinishedMsg` → `refreshFromDisk`, which rescans every scope.
+- Tests: `internal/actions/{add,delete}_test.go`, `internal/app/{add,delete}_test.go`.
 
-**RED then GREEN order:**
-1. **`AddCommand` has no `-g`.** Assert argv `npx skills add <source>` exactly, and that `GIT_SSH_COMMAND` is still set when a key is given. (Replaces the existing test that asserts `-g`.)
-2. **`DeleteCommand(name, global)` argv.** Global → `npx skills remove <name> --global`; project → `npx skills remove <name>`. Assert both.
-3. **Delete of a lock-listed skill dispatches to npx-remove with the right scope flag.** Through `Update` with an injected runner; assert the command carries `--global` iff the skill's scope is Global, and that refresh runs.
-4. **Delete of a local/harness skill removes its scope-specific directory.** Real temp-dir fixture: a skill under a harness scope path; confirm; assert the entry at `skill.Path` is gone and all scopes rescanned.
-5. **Confirm text no longer claims "global".** Assert the confirm modal text.
-6. **After each action, refresh repopulates every scope.** Assert the scope list/counts reflect the rescan.
+**RED then GREEN order (as built):**
+1. **`AddCommand` has no scope flag.** Argv asserted `npx skills add <source>` exactly; `GIT_SSH_COMMAND` still set with a key.
+2. **`DeleteCommand(name, global)` argv.** Global → `npx skills remove <name> --global`; project → `npx skills remove <name>`. Both asserted.
+3. **Delete of a lock-listed skill dispatches to npx-remove with the right scope flag.** Through `Update` with an injected runner; the command carries `--global` iff the skill's scope is Global, and refresh runs. Asserted for both sections.
+4. **Delete of a local/harness skill removes its scope-specific directory.** Regression guards (temp-dir + symlink fixtures from Slice 5) stay green: the entry at `skill.Path` is removed and a symlink delete leaves the canonical skill.
+5. **Confirm text no longer claims "global".** A Project-scope delete names "Project" and contains no "global".
+6. **After each action, refresh repopulates every scope.** The injected rescan runs and the refreshed list reflects it.
 
-**Notes:**
-- `UpdateCommand` already omits `-g`; only the refresh needs to cover all scopes.
-- The wizard gains no scope step — npx prompts for it. Only the forced `-g` is removed.
+**Implementation decisions & handoff notes for Slice 11:**
+
+> - `-g` and `--global` are the same npx flag (`skills remove --help` confirms `-g, --global`). Delete uses the long form `--global` to match the spec; add omits the flag entirely so npx prompts for scope.
+> - The scope flag is derived from the selected skill's own scope, captured into `deleteConfirm` at `startDelete`. `selectedSkill` → `visibleSkills` → `currentSkills` never leaves the selected scope, so the scope is authoritative and the flag is deterministic.
+> - `runDelete` reads `scope.Section` into a local before it nils `m.confirm`, so the flag survives the reset.
 
 ---
 

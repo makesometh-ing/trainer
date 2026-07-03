@@ -2,7 +2,9 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +31,32 @@ func TestDeleteConfirmShowsWarning(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(out), "global") {
 		t.Errorf("expected warning that it affects the global directory, got:\n%s", out)
+	}
+}
+
+// The confirm text names the scope the delete acts on rather than always
+// claiming "global": a Project-scope skill must not be described as global.
+func TestProjectDeleteConfirmNamesProjectScopeNotGlobal(t *testing.T) {
+	result := skills.ScanResult{
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionProject, Path: "/proj"},
+		Skills: []skills.Skill{
+			{Name: "alpha", Path: "/proj/alpha", Lock: &skills.LockEntry{Source: "owner/alpha"}},
+		},
+	}
+
+	var m tea.Model = newTestModel(result)
+	m = press(m, ":")
+	m = press(m, "d")
+
+	out := view(m)
+	if !strings.Contains(out, "alpha") {
+		t.Errorf("expected confirmation to name the selected skill, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Project") {
+		t.Errorf("expected confirmation to name the Project scope, got:\n%s", out)
+	}
+	if strings.Contains(strings.ToLower(out), "global") {
+		t.Errorf("expected a Project-scope delete not to claim global, got:\n%s", out)
 	}
 }
 
@@ -126,6 +154,66 @@ func TestConfirmingSymlinkDeleteRemovesLinkNotTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(canonical, "SKILL.md")); err != nil {
 		t.Errorf("expected the canonical SKILL.md to survive, stat err = %v", err)
+	}
+}
+
+// A lock-listed skill in a Global-section scope removes with --global; a
+// lock-listed skill in a Project-section scope removes without it. The flag is
+// derived from the selected skill's own scope so the removal is deterministic.
+func lockSkillResult(section skills.Section) skills.ScanResult {
+	return skills.ScanResult{
+		Scope: skills.Scope{Name: ".agents", Section: section, Path: "/root"},
+		Skills: []skills.Skill{
+			{Name: "alpha", Path: "/root/alpha", Lock: &skills.LockEntry{Source: "owner/alpha"}},
+		},
+	}
+}
+
+func runLockDelete(t *testing.T, section skills.Section) ([]string, bool) {
+	t.Helper()
+	var ranArgs []string
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		ranArgs = cmd.Args
+		return func() tea.Msg { return done(nil) }
+	}
+	rescanned := false
+	rescan := func() []skills.ScanResult {
+		rescanned = true
+		return []skills.ScanResult{lockSkillResult(section)}
+	}
+
+	var m tea.Model = newTestModel(lockSkillResult(section), WithDeleteRunner(runner), WithRescan(rescan))
+	m = press(m, ":")
+	m = press(m, "d")
+	next, cmd := m.Update(tea.KeyPressMsg{Text: "y"})
+	if cmd != nil {
+		next, _ = next.Update(cmd())
+	}
+	_ = next
+	return ranArgs, rescanned
+}
+
+func TestGlobalLockDeleteAddsGlobalFlagAndRescans(t *testing.T) {
+	ranArgs, rescanned := runLockDelete(t, skills.SectionGlobal)
+
+	wantArgs := []string{"npx", "skills", "remove", "alpha", "--global"}
+	if !slices.Equal(ranArgs, wantArgs) {
+		t.Errorf("ran args = %v, want %v", ranArgs, wantArgs)
+	}
+	if !rescanned {
+		t.Error("expected rescan after delete")
+	}
+}
+
+func TestProjectLockDeleteOmitsGlobalFlagAndRescans(t *testing.T) {
+	ranArgs, rescanned := runLockDelete(t, skills.SectionProject)
+
+	wantArgs := []string{"npx", "skills", "remove", "alpha"}
+	if !slices.Equal(ranArgs, wantArgs) {
+		t.Errorf("ran args = %v, want %v", ranArgs, wantArgs)
+	}
+	if !rescanned {
+		t.Error("expected rescan after delete")
 	}
 }
 

@@ -325,7 +325,7 @@ func TestConfirmingAddRunsCommandThenRescans(t *testing.T) {
 	m = wtype(m, "owner/repo")
 	m = wsend(m, namedKey(tea.KeyEnter))
 
-	wantArgs := []string{"npx", "skills", "add", "owner/repo", "-g"}
+	wantArgs := []string{"npx", "skills", "add", "owner/repo"}
 	if !slices.Equal(ranArgs, wantArgs) {
 		t.Errorf("ran args = %v, want %v", ranArgs, wantArgs)
 	}
