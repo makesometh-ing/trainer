@@ -75,6 +75,7 @@ internal/app/{theme,keymap,model,update,view,scope}.go
 | Final | Full verification + manual smoke | 13 | DONE |
 | 10 | Multi-scope browsing: harness registry, symlink-aware scanner, two-level Scope pane (Global / Project sections) + counts, per-scope lock, scope-scoped list, hide empty scopes/sections | new (v1.0) | DONE |
 | 11 | Scope-aware actions: add passes no scope flag (npx prompts scope); delete passes `--global` by the skill's scope; rescan all scopes | new (v1.0) | DONE |
+| 12 | Context footer + palette-dimmed commands: permanent bottom keybind bar per context; drop the persistent status line and the pre-TUI npx prompt; dim npx-only commands in the palette with a `disabled without npx` tag | new (v1.0) | TODO |
 
 ---
 
@@ -946,6 +947,132 @@ to `[]ScanResult` + `selectedScope`, then five view/navigation cycles.
 > - `-g` and `--global` are the same npx flag (`skills remove --help` confirms `-g, --global`). Delete uses the long form `--global` to match the spec; add omits the flag entirely so npx prompts for scope.
 > - The scope flag is derived from the selected skill's own scope, captured into `deleteConfirm` at `startDelete`. `selectedSkill` → `visibleSkills` → `currentSkills` never leaves the selected scope, so the scope is authoritative and the flag is deterministic.
 > - `runDelete` reads `scope.Section` into a local before it nils `m.confirm`, so the flag survives the reset.
+
+---
+
+## Slice 12: Context footer + palette-dimmed commands — TODO
+
+**Status:** Not started. Target v1.0. Adds a permanent context keybind footer,
+retires the persistent status line, and moves all `npx`-unavailability into the
+command palette.
+
+**What the user asked for (design, grilled 2026-07-03):**
+- A permanent bottom row like herdr's prefix bar: a leading accent chip naming
+  the current context, then the keys available from where you are.
+- The footer shows only keys **not already on screen**: omit the pane digits
+  `1/2/3` (shown in pane titles) and the Details tab keys `i/r/s/a` (shown in the
+  tab bar). Never any error text.
+- Contexts and their chips: `SCOPE`, `SKILLS`, `DETAILS` (one chip; the key list
+  changes by tab/subfocus), `SEARCH`, `FILTER`. Hidden entirely while an overlay
+  modal (palette / confirm / wizard / help) is open.
+- No persistent red status line anywhere. `npx` unavailability shows **only** in
+  the command palette: the affected command is dimmed with a muted
+  `disabled without npx` tag, and a dimmed command does nothing when pressed.
+  The tag never mentions lockfiles or any internal mechanism.
+- The pre-TUI `Continue? [y/N]` prompt is pointless once the palette carries this,
+  so it is removed; the TUI always launches.
+- The one genuine on-disk delete failure (`os.RemoveAll` error) shows no message:
+  the skill stays in the list after the refresh, so the failure is visible by the
+  skill not disappearing.
+
+**Footer contents by context (exact, after omissions):**
+- `SCOPE` — `j/k switch scope · h/l move focus · : commands · ? keys · q quit`
+- `SKILLS` — `j/k select · / search · f filter · r reset · h/l move focus · : commands · ? keys · q quit`
+- `DETAILS`, SKILL.md tab — `j/k scroll · ctrl+d/u half-page · ctrl+f/b page · g/G top/bottom · h/l move focus · : commands · ? keys · q quit`
+- `DETAILS`, file tab + list active — `j/k select file · tab focus content · h/l move focus · : commands · ? keys · q quit`
+- `DETAILS`, file tab + content active — `j/k scroll · ctrl+d/u half-page · ctrl+f/b page · g/G top/bottom · tab focus files · h/l move focus · : commands · ? keys · q quit`
+- `SEARCH` — `type to filter · enter apply · esc clear`
+- `FILTER` — `h/l move option · space apply · c clear · esc done`
+
+**Seams under test:**
+- `Model.renderFooter() string` — the footer line for the current state (empty
+  string when hidden). This is the seam the footer tests assert on directly
+  (like `renderConfirm` / `renderWizard`), because asserting footer content
+  against the whole `View()` would collide with the tab bar, which legitimately
+  contains `i/r/s/a`. Tests drive the model into each context with real key
+  presses, then assert substrings of `renderFooter()`.
+- `Model.renderPalette() string` and palette dispatch (`Model.Update`) — dimmed
+  commands, the `disabled without npx` tag, and that a dimmed key is inert.
+- `Model.View()` height — the footer occupies one reserved row and the frame
+  still fits the terminal.
+- `runtime` package — `ConfirmContinueWithoutNPX` is removed (its test deleted).
+
+**Files:**
+- New: `internal/app/footer.go` — `footerContext()` resolving state → context,
+  and `renderFooter()` building the chip + hint line; hidden when any overlay is
+  open. Chip styled like the palette/help accents (accent background, bold);
+  keys in `theme.Secondary`, descriptions in `theme.Muted`; middot separator.
+- New: `internal/app/footer_test.go`.
+- Modify: `internal/app/view.go` — join `renderFooter()` as the bottom row;
+  `paneHeight` subtracts one row for the footer; remove `renderStatus` and the
+  `m.status` rendering; `renderPalette` dims `npx`-only commands and appends the
+  `disabled without npx` tag.
+- Modify: `internal/app/model.go` — remove the `status` field.
+- Modify: `internal/app/update.go`, `updateskills.go`, `delete.go` — drop the
+  `m.status` assignments; the disabled paths are now unreachable (palette dim),
+  and the on-disk delete failure just refreshes (skill remains).
+- Modify: `internal/app/view.go` / palette gating — a dimmed command key is inert
+  in `handlePaletteKey`.
+- Modify: `cmd/trainer/main.go` — remove the `ConfirmContinueWithoutNPX` call and
+  the (alt-screen-wiped) version printout; always launch.
+- Modify: `internal/runtime/dependencies.go` + `dependencies_test.go` — remove
+  `ConfirmContinueWithoutNPX` and its test.
+- Modify: `internal/app/{palette,layout,delete}_test.go` — extend as below.
+- Bump `minHeight` by one row for the footer if needed.
+
+**RED then GREEN order (one behavior per cycle):**
+1. **Footer renders the SKILLS context.** With the Skills pane focused,
+   `renderFooter()` contains the `SKILLS` chip and `j/k`, `/`, `f`, `r`; it does
+   **not** contain `1/2/3` or `i/r/s/a`. (RED: no footer yet.)
+2. **Footer for the SCOPE context.** Focus pane 1; footer shows `j/k switch scope`
+   and the global tail, and none of `/`, `f`, `r`.
+3. **Footer for DETAILS / SKILL.md tab.** Focus pane 3 on the SKILL.md tab; footer
+   shows the scroll keys (`ctrl+d/u`, `ctrl+f/b`, `g/G`), no `tab` toggle, and
+   omits `i/r/s/a`.
+4. **Footer for DETAILS / file tab, list active.** Select a file tab (subfocus
+   list); footer shows `j/k select file` and `tab focus content`.
+5. **Footer for DETAILS / file tab, content active.** Toggle subfocus to content;
+   footer shows the scroll keys and `tab focus files`.
+6. **Footer for SEARCH mode.** Enter search; footer shows the `SEARCH` chip and
+   `enter apply · esc clear`, and none of the pane keys.
+7. **Footer for FILTER mode.** Focus the filter; footer shows `h/l move option ·
+   space apply · c clear · esc done`.
+8. **Footer hidden during modals.** With the palette (then confirm, wizard, help)
+   open, `renderFooter()` is empty.
+9. **Footer reserves one row and the frame fits.** After a `WindowSizeMsg`, the
+   joined `View()` height is ≤ the terminal height and the footer line is present
+   at the bottom; a pane is one row shorter than without the footer.
+10. **Palette dims add/update without npx.** With `npx` unavailable, the palette
+    shows `add` and `update` dimmed with the `disabled without npx` tag; pressing
+    `a` opens no wizard and produces no status text (asserts no red line anywhere).
+11. **Palette dims delete only for an npx-only selection.** With `npx` unavailable
+    and a lock-tracked skill selected, `delete` is dimmed with the tag and `d` is
+    inert; with an on-disk skill selected, `delete` is enabled and `d` starts the
+    confirm.
+12. **No status line remains; on-disk delete failure leaves the skill.** The
+    `m.status` rendering is gone (no red line in any `View()`); a failed on-disk
+    delete refreshes and the skill is still listed, with no message.
+13. **Footer truncates right-to-left with `? keys` pinned.** At a width narrower
+    than the DETAILS context line, `renderFooter()` fits within the width, keeps
+    the chip and the leftmost context keys, shows an ellipsis where items were
+    dropped, and still ends with `? keys`. Assert the line width ≤ the frame
+    width and that `? keys` and the first context key survive while a
+    middle/global item is gone.
+
+**Cleanup (not red-green — deletions):**
+- Remove `ConfirmContinueWithoutNPX` (runtime) and its test; remove the main.go
+  call and the pre-TUI printout.
+- Remove the `m.status` field and `renderStatus` once cycles 10–12 are green.
+
+**Notes / open questions:**
+- The footer draws from the same `keymap` the help modal uses, so a key shown is
+  a key handled (the existing single-source-of-truth invariant holds).
+- Narrow terminals (confirmed 2026-07-04): the footer drops whole `key desc`
+  items from the right until it fits, keeps the chip and the leftmost context
+  keys, marks the dropped run with an ellipsis, and pins `? keys` as the final
+  item so it is never dropped. The global tail (`: commands`, `q quit`,
+  `h/l move focus`) is trimmed before the context keys.
+- Chip labels are UI copy, not new domain terms; no glossary/ADR change.
 
 ---
 

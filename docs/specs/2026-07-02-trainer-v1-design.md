@@ -414,6 +414,20 @@ Command palette:
 - `u` — update all skills (runs `npx skills@latest update`)
 - `esc` — close command palette or modal
 
+When `npx` is unavailable, the palette dims the commands that cannot run and
+shows a muted `disabled without npx` tag next to each. `a` (add) and `u`
+(update) are dimmed whenever `npx` is missing; `d` (delete) is dimmed only for a
+selection whose safe removal needs `npx` — deleting a skill that lives only on
+disk still works, so `d` stays enabled for those. A dimmed command does nothing
+when its key is pressed. This is the only place `npx` unavailability is
+surfaced; there is no persistent on-screen error line.
+
+The tag copy never mentions lockfiles, lock-tracking, or any internal mechanism
+— the user does not care how a skill is tracked. The tag is exactly
+`disabled without npx`. (Whether a skill's removal needs `npx` is decided
+internally by whether it is lock-tracked, but that word never reaches the
+screen.)
+
 ### Help modal
 
 `?` opens a modal that lists the key bindings grouped by context (global, Skills
@@ -423,26 +437,59 @@ label). The handlers match against them with `key.Matches` and the modal renders
 the same bindings, so the keys shown and the keys handled are one definition and
 cannot list different keys. `esc` or `?` closes it.
 
+### Status footer
+
+The bottom row is a permanent context footer: a leading accent chip naming the
+current context, followed by the key bindings available from where the user is.
+It is drawn from the same `keymap` the help modal uses, so a key in the footer is
+a key that is handled.
+
+The footer shows only the keys that are not already printed elsewhere on screen.
+The pane-focus digits `1` / `2` / `3` (shown in the pane titles) and the Details
+tab keys `i` / `r` / `s` / `a` (shown in the tab bar) are therefore omitted.
+
+The chip and key list by context:
+
+- `SCOPE` (Scope pane focused) — `j/k` switch scope, `h/l` move focus, `:` commands, `?` keys, `q` quit.
+- `SKILLS` (Skills pane focused) — `j/k` select, `/` search, `f` filter, `r` reset, then the move-focus / commands / keys / quit tail.
+- `DETAILS` (Details pane focused) — the chip stays `DETAILS`; the key list depends on the tab and subfocus:
+  - `SKILL.md` tab (no file list) — `j/k` scroll, `ctrl+d/u` half-page, `ctrl+f/b` page, `g/G` top/bottom, then the tail.
+  - a file tab with the file list active — `j/k` select file, `tab` focus content, then the tail.
+  - a file tab with the content active — the scroll keys, `tab` focus files, then the tail.
+- `SEARCH` (search box focused) — `type to filter`, `enter` apply, `esc` clear.
+- `FILTER` (filter group focused) — `h/l` move option, `space` apply, `c` clear, `esc` done.
+
+While an overlay modal is open — command palette, delete confirm, add wizard, or
+the help modal — the footer is hidden entirely, since each modal prints its own
+keys.
+
+The footer occupies one reserved row at the bottom of the frame; the three panes
+are sized to leave it room. There is no separate status or error line: `npx`
+unavailability lives in the command palette (see Command palette) and the footer
+never carries error text.
+
+The longest context line (Details, content active) is wider than an 80-column
+terminal, so the footer sheds content when it does not fit. It drops whole
+`key desc` items from the right until the line fits, keeping the chip and the
+leftmost context keys, and replaces the dropped run with an ellipsis. `? keys`
+is pinned as the final item and is never dropped, so the gateway to the full
+keymap (the help modal) is always reachable. Example when narrow:
+
+```text
+SKILLS  j/k select · / search · f filter · r reset · … · ? keys
+```
+
 ## Startup dependency check
 
-Before starting the TUI, Trainer checks whether `node`, `npm`, and `npx` are available on `PATH`.
+Before starting the TUI, Trainer checks whether `node`, `npm`, and `npx` are
+available on `PATH`. The availability result is passed into the app.
 
-If all are available, Trainer prints the detected versions before launching the app. Example:
-
-```text
-node 26.4.0
-npm 11.13.0
-npx 11.13.0
-```
-
-If `npx` is missing, Trainer warns that adding skills is unavailable and asks whether to continue. (A missing `node` or `npm` is printed as `<name> not found` but does not prompt, since the add / update / delete actions only shell out to `npx`.) The prompt:
-
-```text
-npx is not available. Adding skills will be disabled.
-Continue? [y/N]
-```
-
-If the user declines, Trainer exits before opening the TUI. If the user continues, the app opens in browse/delete mode and `:a` is disabled with an explanatory message. Delete of lockfile-backed skills also requires `npx`; if `npx` is unavailable, Trainer should disable lockfile-backed deletion and explain why. Direct deletion of skills not present in the lockfile can still work after confirmation.
+Trainer always opens the TUI. A missing `npx` does not block launch and does not
+prompt to continue: the browse and delete-on-disk flows work without `npx`, and
+the `npx`-dependent commands surface their unavailability inside the command
+palette (they are dimmed and the palette shows a warning; see Command palette).
+Because the TUI opens on the alternate screen, there is no pre-TUI version
+printout — the dependency state is shown where it is actionable, in the palette.
 
 ## Add flow
 
@@ -507,6 +554,12 @@ an `.agents` skill absent from the lock), remove that skill's own directory
 entry at its scope path directly after confirmation; removing a symlink leaves
 the canonical skill intact.
 
+Removing a lock-tracked skill needs `npx`, so when `npx` is unavailable the
+palette dims `d` for a lock-tracked selection and the delete is never reached.
+An on-disk delete that fails (for example a permission error) shows no message:
+the skill simply remains in the list after the refresh, so the failure is
+visible by the skill not disappearing.
+
 After deletion, Trainer refreshes every scope from disk.
 
 ## Update flow
@@ -518,8 +571,8 @@ scope (Project or Global), so the user chooses what to update there and Trainer
 passes no scope flag. After the command exits, Trainer resumes and refreshes
 every scope from disk. Exit code does not prevent the refresh.
 
-Update requires `npx`. When `npx` is unavailable, `:u` is disabled and shows an
-explanatory message, the same way `:a` is.
+Update requires `npx`. When `npx` is unavailable, the palette dims `u` and shows
+its warning, the same way `a` is dimmed; there is no on-screen error line.
 
 ## Rendering
 
@@ -708,4 +761,8 @@ Test coverage should include:
   the terminal width)
 - the content scrollbar appears only when content overflows the visible area
 - the `?` help modal lists the key bindings
-- `:u` builds the `npx skills@latest update` command and is disabled without `npx`
+- `:u` builds the `npx skills@latest update` command
+- the command palette dims `a` / `u` (and `d` for a lock-tracked selection) when
+  `npx` is unavailable, and a dimmed command does nothing when pressed
+- the context footer shows the right chip and keys per context, omits the on-screen
+  `1/2/3` and `i/r/s/a` keys, and is hidden while an overlay modal is open
