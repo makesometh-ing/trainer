@@ -22,6 +22,31 @@ func TestMarkdownPreservesHeadingText(t *testing.T) {
 	}
 }
 
+// The SKILL.md tab renders frontmatter as a fenced YAML block. Its lines must
+// sit flush at the left edge, aligned with the divider above them, not pushed
+// right by a document + code-block margin.
+func TestMarkdownFrontmatterBlockIsLeftAligned(t *testing.T) {
+	md := "```yaml\nname: find-skills\ndescription: does things\n```\n"
+	out, err := Markdown(md, 80)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasLeftAlignedLine(stripANSI(out), "name: find-skills") {
+		t.Errorf("expected the frontmatter line to be flush left, got:\n%q", out)
+	}
+}
+
+// hasLeftAlignedLine reports whether some line equals content once trailing
+// padding (code-block background fill) is removed and has no leading indent.
+func hasLeftAlignedLine(s, content string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimRight(line, " ") == content {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGruvboxStyleUsesSpecPalette(t *testing.T) {
 	style := GruvboxDarkHard()
 

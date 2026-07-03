@@ -35,7 +35,8 @@ func GruvboxDarkHard() ansi.StyleConfig {
 				BlockSuffix: "\n",
 				Color:       strPtr(gruvboxFg1),
 			},
-			Margin: uintPtr(2),
+			// No left margin: content sits flush under the section dividers.
+			Margin: uintPtr(0),
 		},
 		BlockQuote: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{
@@ -158,7 +159,8 @@ func GruvboxDarkHard() ansi.StyleConfig {
 				StylePrimitive: ansi.StylePrimitive{
 					Color: strPtr(gruvboxFg1),
 				},
-				Margin: uintPtr(2),
+				// Flush left, like the frontmatter block and the body text.
+				Margin: uintPtr(0),
 			},
 			Theme: "gruvbox",
 		},

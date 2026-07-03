@@ -73,7 +73,7 @@ internal/app/{theme,keymap,model,update,view}.go
 | 7 | Detail rendering & layout polish (post-smoke): frontmatter strip, Gruvbox Glamour theme, pane fit/windowing, row highlight, `h`/`l`/`enter` nav, subfocus + scroll indicators, tab keys `i/r/s/a` | new | DONE |
 | 8 | Search + filter + demarcated Details: search box, origin filter, full-width Details, frontmatter shown, content scrollbar, `?` help modal, `:u` update, no row caret, `Details` title | new | DONE |
 | 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | DONE |
-| Final | Full verification + manual smoke | 13 | NOT DONE |
+| Final | Full verification + manual smoke | 13 | DONE |
 
 ---
 
@@ -539,9 +539,10 @@ opens a help modal listing all bindings. `:u` runs `npx skills@latest update`.
 
 - **Search box:** Bubbles `textinput`. **Matching:** `github.com/sahilm/fuzzy`
   (the library the Bubbles `list` component uses internally).
-- **Help modal:** Bubbles `help` + `key`. Bindings are defined once as
-  `key.Binding` values and used both to handle keys and to render the modal, so
-  the two cannot drift apart.
+- **Help modal:** Bubbles `help` + `key`. The `?` modal renders the shared
+  `key.Binding` values. (In the v0.99 audit pass the key handlers were changed to
+  match against those same bindings with `key.Matches`, so the shown keys and the
+  handled keys are one definition and cannot differ — see the audit notes.)
 - **Content + scroll:** Bubbles `viewport` (already in use).
 - **Not adopting Bubbles `list`:** its filter is an on-demand `/` prompt, which
   does not match the always-visible search and filter boxes in the chosen
@@ -733,7 +734,14 @@ throwaway prototype before any slice code was written:
 - `internal/app/add_test.go` — wizard-driving harness + 12 integration cycles
 - `go.mod`/`go.sum` — `charm.land/huh/v2 v2.0.3` as a direct dependency
 
-## Final slice: Full verification — NOT DONE
+## Final slice: Full verification — DONE
+
+**Status:** Completed 2026-07-03 (v0.99). All slices land; `make verify`
+(fmt-check, vet, test, lint) is green with 0 lint issues, the binary builds, and
+the app has been smoke-run against the real `~/.agents/skills` including the add
+wizard. A full audit reconciled the implementation against the design spec and
+the spec was reverse-updated to match the code (see the audit notes below the
+checklist). Two known gaps are recorded there rather than fixed for v1.
 
 Was Task 13. After all slices land:
 
@@ -761,11 +769,48 @@ Manual smoke checklist:
   dependency status.
 - Resize: frame always fits; below 60×15 shows the too-small message and restores on grow.
 
+### Audit notes (v0.99, 2026-07-03)
+
+A full implementation-vs-spec audit reconciled the two. The implementation is the
+source of truth and the design spec was reverse-updated to match it (the Huh add
+wizard, the row `local` label, the search placeholder, `g` not `gg`, the
+`pluginName` lock field, the npx-only dependency prompt, the delete-confirm
+wording, the architecture file list).
+
+Changes made off the back of the audit:
+
+- **Warnings removed.** The scan-warning machinery (`ScanResult.Warnings`,
+  `Skill.Warnings`, `Model.warnings`) was stripped. A malformed or
+  frontmatter-less `SKILL.md` is still listed, keeping its directory name and an
+  empty body; there is no longer a collected-but-unshown warning.
+- **Search (`/`) and filter (`f`) are Skills-pane keys.** They act only while the
+  Skills pane is focused, the same way the tab keys act only in the Details pane.
+  Previously they worked from any pane.
+- **Help modal and key handling are one definition.** `keys.go` holds a `keymap`
+  of `key.Binding` values with their real keys and help labels; the handlers
+  match with `key.Matches` and the help modal renders the same bindings, so the
+  displayed keys and the handled keys are the same source and cannot list
+  different keys. The earlier wrong entries were corrected: `g/G` (single `g`)
+  not `gg/G`, the `ctrl+f`/`ctrl+b` full-page bindings are shown, and the filter
+  keys are labelled "(filter focused)".
+- **`j` / `k` are inert in the Scope pane.** They move the skills selection only
+  while the Skills pane is focused. The Scope-pane key is reserved for scope
+  selection once there is more than one scope.
+- **Rendered content is flush left.** The Glamour document margin and the
+  code-block margin are both zero, so the frontmatter YAML block and the body sit
+  flush under the section dividers instead of indented.
+
+Out of scope for v1 (by choice):
+
+- The Skills-pane search/filter/list logic stays as `Model` methods in
+  `search.go`. A separate-type extraction was proposed earlier but carries no
+  user-visible change.
+
 ---
 
 ## Cross-slice risks (read before starting)
 
-- **Bubble Tea v2 API drift.** v2 changed `Update` return types, key messages, and program options vs v1 and most tutorials. Verify against the vendored v2.0.7 source before writing update tests.
+- **Bubble Tea v2 API changes.** v2 changed `Update` return types, key messages, and program options vs v1 and most tutorials. Verify against the vendored v2.0.7 source before writing update tests.
 - **`go.mod` re-resolution.** Deps re-add as slices import them; run `go mod tidy` at the end of each slice.
 - **View test brittleness.** Assert substrings, never full-frame snapshots — Lip Gloss styling and width padding make snapshots fragile and coupled to layout.
 - **No real `npx` in tests.** Only filesystem delete of a skill on disk executes for real (temp dir). Everything else is construction + injected runner.

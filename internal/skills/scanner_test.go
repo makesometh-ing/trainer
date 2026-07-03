@@ -133,7 +133,7 @@ func TestScanGlobalMergesLockMetadata(t *testing.T) {
 	}
 }
 
-func TestScanGlobalMalformedSkillWarns(t *testing.T) {
+func TestScanGlobalMalformedSkillStillListed(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "broken", "no frontmatter here\njust text\n")
 
@@ -142,8 +142,8 @@ func TestScanGlobalMalformedSkillWarns(t *testing.T) {
 	if len(result.Skills) != 1 {
 		t.Fatalf("expected malformed skill still listed, got %d", len(result.Skills))
 	}
-	if len(result.Skills[0].Warnings) == 0 {
-		t.Error("expected a warning on malformed skill")
+	if result.Skills[0].Name != "broken" {
+		t.Errorf("expected malformed skill to keep its directory name, got %q", result.Skills[0].Name)
 	}
 }
 
@@ -158,9 +158,6 @@ func TestScanGlobalAbsentLockfileLeavesLockNil(t *testing.T) {
 	}
 	if result.Skills[0].Lock != nil {
 		t.Error("expected nil lock when lockfile absent")
-	}
-	for _, w := range result.Warnings {
-		t.Errorf("unexpected scan warning: %s", w)
 	}
 }
 

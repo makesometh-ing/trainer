@@ -18,7 +18,6 @@ type Skill struct {
 	Scripts     []SkillFile
 	Assets      []SkillFile
 	Lock        *LockEntry
-	Warnings    []string
 }
 
 type SkillFile struct {
@@ -39,7 +38,6 @@ type LockEntry struct {
 }
 
 type ScanResult struct {
-	Scope    Scope
-	Skills   []Skill
-	Warnings []string
+	Scope  Scope
+	Skills []Skill
 }

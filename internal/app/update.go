@@ -1,6 +1,7 @@
 package app
 
 import (
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -58,49 +59,66 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.skillsMode == modeFilter {
 		return m.handleFilterKey(msg)
 	}
-	switch msg.String() {
-	case "q", "ctrl+c":
+	// Dispatch matches against the shared keymap so the handled keys are the same
+	// definitions the help modal shows. reset (r) is matched before the detail
+	// tabs (which also bind r) so r stays context-dependent.
+	switch {
+	case key.Matches(msg, m.keys.quit):
 		return m, tea.Quit
-	case ":":
+	case key.Matches(msg, m.keys.palette):
 		m.palette = true
 		m.status = ""
 		return m, nil
-	case "?":
+	case key.Matches(msg, m.keys.help):
 		m.help = true
 		return m, nil
-	case "/":
-		m.focus = paneSkills
-		m.skillsMode = modeSearch
-		return m, m.search.Focus()
-	case "f":
-		m.focus = paneSkills
-		m.skillsMode = modeFilter
-		m.filterCursor = m.filter
-		return m, nil
-	case "1":
-		m.focus = paneScope
-	case "2":
-		m.focus = paneSkills
-	case "3":
-		m.focus = paneDetail
-	case "j", "down":
-		m.moveDown()
-	case "k", "up":
-		m.moveUp()
-	case "h", "left":
-		m.focusLeft()
-	case "l", "right", "enter":
-		m.focusRight()
-	case "r":
-		// r is the one context-dependent key: it resets search and filter in the
-		// Skills pane, and selects the References tab in the Details pane.
+	case key.Matches(msg, m.keys.search):
+		// Search is a Skills-pane key: it acts only while that pane is focused,
+		// the same way the tab keys act only in the Details pane.
+		if m.focus == paneSkills {
+			m.skillsMode = modeSearch
+			return m, m.search.Focus()
+		}
+	case key.Matches(msg, m.keys.filter):
+		if m.focus == paneSkills {
+			m.skillsMode = modeFilter
+			m.filterCursor = m.filter
+		}
+	case key.Matches(msg, m.keys.focusPanes):
+		switch msg.String() {
+		case "1":
+			m.focus = paneScope
+		case "2":
+			m.focus = paneSkills
+		case "3":
+			m.focus = paneDetail
+		}
+	case key.Matches(msg, m.keys.reset):
+		// r resets search and filter in the Skills pane, and selects the
+		// References tab in the Details pane.
 		switch m.focus {
 		case paneSkills:
 			m.resetSearchFilter()
 		case paneDetail:
 			m.setTab(tabReferences)
 		}
-	case "i", "s", "a", "tab", "ctrl+d", "ctrl+u", "ctrl+f", "ctrl+b", "g", "G":
+	case key.Matches(msg, m.keys.move):
+		if s := msg.String(); s == "j" || s == "down" {
+			m.moveDown()
+		} else {
+			m.moveUp()
+		}
+	case key.Matches(msg, m.keys.moveFocus):
+		if s := msg.String(); s == "h" || s == "left" {
+			m.focusLeft()
+		} else {
+			m.focusRight()
+		}
+	case key.Matches(msg, m.keys.tabs),
+		key.Matches(msg, m.keys.subfocus),
+		key.Matches(msg, m.keys.halfPage),
+		key.Matches(msg, m.keys.fullPage),
+		key.Matches(msg, m.keys.topBottom):
 		// Tab, subfocus, and scroll keys act on the Details pane, so they apply
 		// only while it is focused.
 		if m.focus == paneDetail {
@@ -166,7 +184,8 @@ func (m *Model) moveUp() {
 }
 
 func (m *Model) moveContent(delta int) {
-	if m.focus == paneDetail {
+	switch m.focus {
+	case paneDetail:
 		if m.onFileTab() {
 			if m.subfocus == subfocusList {
 				m.moveFileSelection(delta)
@@ -177,10 +196,13 @@ func (m *Model) moveContent(delta int) {
 		}
 		if m.tab == tabSkill {
 			m.scrollLines(delta)
-			return
 		}
+	case paneSkills:
+		m.moveSelection(delta)
+	case paneScope:
+		// One scope in v1, so there is nothing to move. Scope-selection movement
+		// lands here when more scopes are added.
 	}
-	m.moveSelection(delta)
 }
 
 func (m *Model) scrollLines(delta int) {
@@ -241,12 +263,12 @@ func (m *Model) setTab(t tab) {
 }
 
 func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
+	switch {
+	case key.Matches(msg, m.keys.quit):
 		return m, tea.Quit
-	case "esc":
+	case msg.String() == "esc":
 		m.palette = false
-	case "a":
+	case key.Matches(msg, m.keys.addCmd):
 		m.palette = false
 		if !m.addEnabled {
 			m.status = "Adding skills is disabled: npx is not available."
@@ -254,10 +276,10 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.wizard = newAddWizard(m.sshKeys, m.theme)
 		return m, m.wizard.form.Init()
-	case "d":
+	case key.Matches(msg, m.keys.deleteCmd):
 		m.palette = false
 		return m.startDelete()
-	case "u":
+	case key.Matches(msg, m.keys.updateCmd):
 		m.palette = false
 		return m.runUpdate()
 	}

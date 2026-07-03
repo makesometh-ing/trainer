@@ -20,6 +20,22 @@ func TestHelpModalListsBindings(t *testing.T) {
 	}
 }
 
+func TestHelpModalKeysAreAccurate(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+	m = resize(m, 120, 40)
+	m = press(m, "?")
+
+	out := plain(view(m))
+	if strings.Contains(out, "gg/G") {
+		t.Errorf("help lists gg/G but the handler jumps to top on a single g, got:\n%s", out)
+	}
+	for _, want := range []string{"g/G", "ctrl+f/b"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected help to list %q, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestHelpModalClosesOnEsc(t *testing.T) {
 	var m tea.Model = NewModel(browseResult())
 	m = resize(m, 120, 40)

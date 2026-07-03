@@ -42,7 +42,10 @@ skill-name/
 
 `SKILL.md` is required for a valid skill. It contains YAML frontmatter and Markdown body content.
 
-Trainer should still show invalid or partially broken skill directories when possible, with warnings in the UI. This is low priority for v1.
+Trainer still lists invalid or partially broken skill directories: the scanner
+continues past a malformed or frontmatter-less `SKILL.md`, listing the skill with
+its directory name and an empty body. v1 neither collects nor displays warnings
+for these.
 
 ## Lockfile metadata
 
@@ -66,13 +69,14 @@ Relevant schema fields:
       "skillPath": "skills/skill-name/SKILL.md",
       "skillFolderHash": "...",
       "installedAt": "...",
-      "updatedAt": "..."
+      "updatedAt": "...",
+      "pluginName": "..."
     }
   }
 }
 ```
 
-Skill list rows show `source` when the skill is present in the lockfile. Otherwise they show the local filesystem path.
+Skill list rows show `source` when the skill is present in the lockfile. Otherwise they show the literal label `local`. (The full local filesystem path is shown in the Details meta block, not in the list row.)
 
 Skill detail headers show:
 
@@ -160,6 +164,10 @@ Global
 
 Do not render disabled future placeholders. Future scopes may be agent names such as `claude` or `codex`, or project paths.
 
+`j` / `k` act on the focused pane's list: they move the skills selection only
+while the Skills pane is focused. With a single scope they do nothing in the
+Scope pane; that key moves the scope selection once there is more than one scope.
+
 ### Pane 2: Skills
 
 The Skills pane has three parts stacked top to bottom: a search box, a filter
@@ -170,7 +178,8 @@ drawn, even when empty, so the controls are always visible.
 
 A single-line text box that narrows the skill list as the user types. Matching
 is fuzzy (a skill matches when the typed characters appear in order anywhere in
-its name or source). The search box is off by default and shows a placeholder.
+its name or source). The search box is unfocused by default and shows the
+placeholder `type to filter…`.
 
 - `/` moves focus into the search box.
 - Typing narrows the list immediately.
@@ -299,7 +308,6 @@ Global keys:
 - `1` — focus Scope pane
 - `2` — focus Skills pane
 - `3` — focus Details pane
-- `/` — focus the search box (in the Skills pane)
 - `?` — show the help modal
 - `:` — open command palette
 - `q` — quit
@@ -309,9 +317,13 @@ Skills pane:
 - `j` / `k` — move selection down/up
 - `h` — move focus to the pane on the left
 - `l` / `enter` — move focus to the pane on the right
-- `/` — focus the search box
-- `f` — focus the filter radio group
+- `/` — focus the search box (acts only while the Skills pane is focused)
+- `f` — focus the filter radio group (acts only while the Skills pane is focused)
 - `r` — reset the search text and the filter to `All`
+
+`/` and `f` are Skills-pane keys, the same way the tab keys `i` / `r` / `s` / `a`
+are Details-pane keys: they do nothing from the Scope or Details pane. Focus the
+Skills pane first (`2`) to use them.
 
 While the search box is focused:
 
@@ -342,7 +354,7 @@ Details pane (all of these keys act only while the Details pane is focused):
 - `j` / `k` — scroll content one line when the content is active
 - `ctrl+d` / `ctrl+u` — scroll content half-page down/up
 - `ctrl+f` / `ctrl+b` — scroll content full-page down/up
-- `gg` / `G` — jump content to top/bottom
+- `g` / `G` — jump content to top/bottom (single `g`, not a `gg` sequence)
 - `h` / `l` — navigate panes, not detail subfocus
 
 Command palette:
@@ -355,10 +367,12 @@ Command palette:
 
 ### Help modal
 
-`?` opens a modal that lists every key binding grouped by context (global,
-Skills pane, Details pane, command palette). It is built from the same binding
-definitions the app uses to handle keys, so the modal and the real behavior
-cannot fall out of step. `esc` or `?` closes it.
+`?` opens a modal that lists the key bindings grouped by context (global, Skills
+pane, Details pane, command palette). The bindings are defined once in `keys.go`
+as a `keymap` of `key.Binding` values (each carrying its real keys and its help
+label). The handlers match against them with `key.Matches` and the modal renders
+the same bindings, so the keys shown and the keys handled are one definition and
+cannot list different keys. `esc` or `?` closes it.
 
 ## Startup dependency check
 
@@ -372,7 +386,7 @@ npm 11.13.0
 npx 11.13.0
 ```
 
-If any dependency is missing, Trainer warns that adding skills is unavailable and asks whether to continue:
+If `npx` is missing, Trainer warns that adding skills is unavailable and asks whether to continue. (A missing `node` or `npm` is printed as `<name> not found` but does not prompt, since the add / update / delete actions only shell out to `npx`.) The prompt:
 
 ```text
 npx is not available. Adding skills will be disabled.
@@ -421,11 +435,9 @@ Trainer does not pass agent flags. The user can make all standard `npx skills` c
 
 `:d` starts delete confirmation for the selected skill.
 
-The confirmation explains:
-
-- the selected skill will be removed
-- symlinks may break
-- this action affects the installed global skill directory
+The confirmation asks `Delete <skill-name>?` and explains that this removes the
+skill from the global skills directory and may leave broken symlinks. `y`
+confirms; any other key cancels.
 
 If the selected skill has lockfile metadata, run:
 
@@ -464,6 +476,10 @@ Markdown rendering:
   `ansi.StyleConfig`). Do not use Glamour's built-in `dark` style.
 - Use word wrapping based on the detail content width (pane width minus its
   border and padding).
+- Render content with no left margin, so it is flush with the left edge of the
+  content area and aligned with the section dividers above it. The Glamour
+  document margin and the code-block margin are both zero; the frontmatter YAML
+  block therefore sits flush left rather than indented.
 - Trim the leading and trailing blank lines that renderers frame content with,
   so the content sits flush under its divider (no gap above the frontmatter) and
   the scrollbar reaches the bottom when the last line of real text is in view.
@@ -486,18 +502,22 @@ Asset rendering:
 - Bubble Tea v2 for the application model and update loop
 - Bubbles v2 for the interactive primitives:
   - `viewport` for the scrollable Details content
-  - `textinput` for the search box and the add-skill source field
+  - `textinput` for the search box
   - `help` and `key` for the `?` help modal and its binding definitions
+- Huh v2 for the add-skill wizard form (a source input and a conditional
+  SSH-key select), embedded in the Bubble Tea model
 - `github.com/sahilm/fuzzy` for fuzzy search matching (the same library the
   Bubbles `list` component uses internally)
 - Lip Gloss v2 for layout and styling
 - Glamour v2 for Markdown rendering
 - Chroma for syntax highlighting
 
-The add-skill wizard, command palette, and delete confirmation are built on the
-Bubbles primitives above with plain key handling. Rebuilding the add-skill
-wizard on Huh v2 is a planned change tracked as its own slice in the
-implementation plan; it is not used yet, and no code depends on it.
+The command palette and delete confirmation are built with plain key handling
+over Lip Gloss. The add-skill wizard is a Huh v2 form embedded in the Bubble Tea
+model and driven through `Model.Update`; it is rendered as a centered modal
+overlay (like the command palette) and themed to the Gruvbox palette from the
+app's theme struct (Huh's default theme is indigo and fuchsia, which the theme
+override replaces).
 
 Prefer an existing, well-maintained dependency over a hand-built widget whenever
 one fits. Where no off-the-shelf component fits (the filter radio group and the
@@ -562,14 +582,24 @@ internal/app/model.go
 internal/app/update.go
 internal/app/view.go
 internal/app/keymap.go
+internal/app/keys.go          # help-modal binding definitions
+internal/app/help.go          # ? help modal
 internal/app/theme.go
+internal/app/search.go        # search box + origin filter + visible-skills
+internal/app/add.go           # add wizard (Huh form) + run/refresh
+internal/app/huhtheme.go      # Gruvbox theme for the Huh form
+internal/app/delete.go        # delete confirm + strategy dispatch
+internal/app/updateskills.go  # :u update flow
 internal/skills/scanner.go
 internal/skills/skill.go
 internal/skills/lockfile.go
 internal/skills/frontmatter.go
 internal/render/markdown.go
 internal/render/code.go
+internal/render/gruvbox.go    # Gruvbox Glamour StyleConfig
+internal/render/trim.go       # trim surrounding blank lines
 internal/actions/add.go
+internal/actions/update.go
 internal/actions/delete.go
 internal/runtime/dependencies.go
 internal/ssh/keys.go
@@ -577,11 +607,12 @@ internal/ssh/keys.go
 
 Responsibilities:
 
-- `cmd/trainer/main.go`: program entrypoint
+- `cmd/trainer/main.go`: program entrypoint, dependency check, scan, runner wiring
 - `internal/app`: Bubble Tea model, input handling, rendering layout, modal state
+  (command palette, add wizard, delete confirm, `?` help), search/filter
 - `internal/skills`: filesystem scan, frontmatter parsing, lockfile merge
-- `internal/render`: Markdown and code rendering
-- `internal/actions`: add/delete command construction and execution
+- `internal/render`: Markdown, code, and Gruvbox styling
+- `internal/actions`: add / update / delete command construction and execution
 - `internal/runtime`: startup dependency detection for `node`, `npm`, and `npx`
 - `internal/ssh`: SSH key-pair detection
 

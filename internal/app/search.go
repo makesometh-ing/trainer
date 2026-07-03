@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -134,30 +135,33 @@ func (m Model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+	// Only ctrl+c quits inside the filter (q is inert here, not a global quit).
+	switch {
+	case msg.String() == "ctrl+c":
 		return m, tea.Quit
-	case "esc", "enter", "f":
+	case msg.String() == "esc" || msg.String() == "enter" || msg.String() == "f":
 		m.skillsMode = modeList
-	case "l", "right":
+	case key.Matches(msg, m.keys.filterMove):
 		// The filter is laid out left to right (All Remote Local), so l/h move
 		// the cursor along it; j/k stay list navigation.
-		if m.filterCursor < originLocal {
-			m.filterCursor++
-		}
-	case "h", "left":
-		if m.filterCursor > originAll {
+		if s := msg.String(); s == "l" || s == "right" {
+			if m.filterCursor < originLocal {
+				m.filterCursor++
+			}
+		} else if m.filterCursor > originAll {
 			m.filterCursor--
 		}
-	case "j", "down":
-		m.moveDown()
-	case "k", "up":
-		m.moveUp()
-	case "space":
+	case key.Matches(msg, m.keys.move):
+		if s := msg.String(); s == "j" || s == "down" {
+			m.moveDown()
+		} else {
+			m.moveUp()
+		}
+	case key.Matches(msg, m.keys.filterApply):
 		m.filter = m.filterCursor
 		m.clampSelection()
 		m.syncContent()
-	case "c":
+	case key.Matches(msg, m.keys.filterClear):
 		m.filter = originAll
 		m.filterCursor = originAll
 		m.clampSelection()

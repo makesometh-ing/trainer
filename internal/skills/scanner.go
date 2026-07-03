@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,13 +13,11 @@ func ScanGlobal(root string, lockPath string) ScanResult {
 
 	locks, err := ReadGlobalLock(lockPath)
 	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("lockfile: %v", err))
 		locks = map[string]LockEntry{}
 	}
 
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("scan: %v", err))
 		return result
 	}
 
@@ -50,14 +47,10 @@ func buildSkill(name, dir, skillPath string, locks map[string]LockEntry) Skill {
 		SkillPath: skillPath,
 	}
 
-	content, err := os.ReadFile(skillPath)
-	if err != nil {
-		skill.Warnings = append(skill.Warnings, fmt.Sprintf("read SKILL.md: %v", err))
-	} else {
-		fm, raw, body, perr := ParseSkillMarkdown(content)
-		if perr != nil {
-			skill.Warnings = append(skill.Warnings, fmt.Sprintf("frontmatter: %v", perr))
-		}
+	// A malformed or frontmatter-less SKILL.md is still listed: the read/parse
+	// errors are ignored and the skill keeps its directory name and an empty body.
+	if content, err := os.ReadFile(skillPath); err == nil {
+		fm, raw, body, _ := ParseSkillMarkdown(content)
 		if fm.Name != "" {
 			skill.Name = fm.Name
 		}

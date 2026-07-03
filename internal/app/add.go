@@ -130,7 +130,6 @@ func (m Model) refreshFromDisk() Model {
 	result := m.rescan()
 	m.skills = result.Skills
 	m.scope = result.Scope
-	m.warnings = result.Warnings
 	m.clampSelection()
 	m.fileSel = 0
 	m.subfocus = subfocusList

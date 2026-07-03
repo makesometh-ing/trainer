@@ -20,10 +20,10 @@ const (
 )
 
 type Model struct {
-	theme    Theme
-	scope    skills.Scope
-	skills   []skills.Skill
-	warnings []string
+	theme  Theme
+	keys   keymap
+	scope  skills.Scope
+	skills []skills.Skill
 
 	search       textinput.Model
 	filter       originFilter
@@ -108,9 +108,9 @@ func WithRescan(rescan RescanFunc) Option {
 func NewModel(result skills.ScanResult, opts ...Option) Model {
 	m := Model{
 		theme:               GruvboxDarkHard(),
+		keys:                newKeymap(),
 		scope:               result.Scope,
 		skills:              result.Skills,
-		warnings:            result.Warnings,
 		search:              newSearchInput(),
 		focus:               paneSkills,
 		addEnabled:          true,

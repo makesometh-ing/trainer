@@ -1,7 +1,6 @@
 package app
 
 import (
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -21,16 +20,7 @@ func (m Model) handleHelpKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // the descriptions line up, one accent for headings, one color for keys, and a
 // single elevated surface.
 func (m Model) renderHelp() string {
-	kb := defaultKeyBindings()
-	groups := []struct {
-		title string
-		binds []key.Binding
-	}{
-		{"Global", kb.global},
-		{"Skills pane", kb.skills},
-		{"Details pane", kb.detail},
-		{"Command palette", kb.palette},
-	}
+	groups := m.keys.helpGroups()
 
 	keyW := 0
 	for _, g := range groups {
