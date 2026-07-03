@@ -50,7 +50,6 @@ type Model struct {
 
 	palette bool
 	help    bool
-	status  string
 
 	wizard  *addWizard
 	confirm *deleteConfirm
@@ -137,6 +136,12 @@ func (m Model) currentSkills() []skills.Skill {
 
 func (m Model) AddEnabled() bool {
 	return m.addEnabled
+}
+
+// addCmdDisabled reports whether the add and update commands are unavailable.
+// Both drive npx, so both are gated on the same capability flag.
+func (m Model) addCmdDisabled() bool {
+	return !m.addEnabled
 }
 
 func (m Model) LockedDeleteEnabled() bool {

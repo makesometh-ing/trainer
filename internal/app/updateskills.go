@@ -13,7 +13,6 @@ type updateFinishedMsg struct{}
 // from disk. Update needs npx, so it is gated on the same capability flag as add.
 func (m Model) runUpdate() (tea.Model, tea.Cmd) {
 	if !m.addEnabled {
-		m.status = "Updating skills is disabled: npx is not available."
 		return m, nil
 	}
 	if m.addRunner == nil {

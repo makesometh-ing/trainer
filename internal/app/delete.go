@@ -13,6 +13,18 @@ type deleteConfirm struct {
 	scope skills.Scope
 }
 
+// deleteCmdDisabled reports whether deleting the selected skill is unavailable.
+// It mirrors runDelete's gate exactly: only an npx-remove skill is blocked, and
+// only while npx is unavailable. An on-disk (symlink/directory) delete is always
+// available, so it stays enabled.
+func (m Model) deleteCmdDisabled() bool {
+	s, ok := m.selectedSkill()
+	if !ok {
+		return false
+	}
+	return actions.DeleteStrategy(s) == actions.StrategyNPXRemove && !m.lockedDeleteEnabled
+}
+
 func (m Model) startDelete() (tea.Model, tea.Cmd) {
 	m.palette = false
 	s, ok := m.selectedSkill()
@@ -57,7 +69,6 @@ func (m Model) runDelete() (tea.Model, tea.Cmd) {
 	switch actions.DeleteStrategy(skill) {
 	case actions.StrategyNPXRemove:
 		if !m.lockedDeleteEnabled {
-			m.status = "Deleting this skill is disabled: npx is not available."
 			return m, nil
 		}
 		if m.deleteRunner == nil {
@@ -67,10 +78,10 @@ func (m Model) runDelete() (tea.Model, tea.Cmd) {
 		run := m.deleteRunner(cmd, func(error) tea.Msg { return deleteFinishedMsg{} })
 		return m, run
 	default:
-		if err := actions.RemoveDirectory(skill.Path); err != nil {
-			m.status = "Failed to delete " + skill.Name + ": " + err.Error()
-			return m, nil
-		}
+		// A failed on-disk removal shows no message: the skill stays on disk, so
+		// the rescan still lists it and the failure is visible by the skill not
+		// disappearing.
+		_ = actions.RemoveDirectory(skill.Path)
 		m = m.refreshFromDisk()
 		return m, nil
 	}

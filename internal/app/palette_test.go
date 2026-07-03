@@ -55,6 +55,14 @@ func TestPaletteUpdateRunsWhenNPXAvailable(t *testing.T) {
 	}
 }
 
+// errorColorANSI is the SGR sequence Error (#fb4934) renders as. The status line
+// is gone, so no view may contain red text.
+const errorColorANSI = "251;73;52"
+
+func hasRedText(rawView string) bool {
+	return strings.Contains(rawView, errorColorANSI)
+}
+
 func TestPaletteUpdateDisabledWithoutNPX(t *testing.T) {
 	ran := false
 	var m tea.Model = newTestModel(browseResult(),
@@ -65,12 +73,16 @@ func TestPaletteUpdateDisabledWithoutNPX(t *testing.T) {
 		}),
 	)
 	m = press(m, ":")
+	// The update command is dimmed with a tag while npx is unavailable.
+	if !strings.Contains(plain(view(m)), "disabled without npx") {
+		t.Errorf("expected the 'disabled without npx' tag in the palette, got:\n%s", plain(view(m)))
+	}
 	m = press(m, "u")
 	if ran {
 		t.Error("expected :u not to run when npx is unavailable")
 	}
-	if !strings.Contains(view(m), "disabled") {
-		t.Errorf("expected an explanatory message when update is disabled, got:\n%s", view(m))
+	if hasRedText(view(m)) {
+		t.Errorf("expected no red status text after a dimmed command, got:\n%s", view(m))
 	}
 }
 

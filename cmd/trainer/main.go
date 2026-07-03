@@ -21,14 +21,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// npx availability gates the add/update/delete commands inside the TUI (they
+	// are dimmed when it is missing), so the app always launches.
 	deps := runtime.CheckDefault()
-	printDependencies(deps)
-
-	if !deps.NPXAvailable {
-		if !runtime.ConfirmContinueWithoutNPX(os.Stdin, os.Stdout) {
-			os.Exit(0)
-		}
-	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -64,15 +59,5 @@ func main() {
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "trainer: %v\n", err)
 		os.Exit(1)
-	}
-}
-
-func printDependencies(deps runtime.DependencyStatus) {
-	for _, tool := range []runtime.Tool{deps.Node, deps.NPM, deps.NPX} {
-		if tool.Path == "" {
-			fmt.Printf("%s not found\n", tool.Name)
-			continue
-		}
-		fmt.Printf("%s %s\n", tool.Name, tool.Version)
 	}
 }

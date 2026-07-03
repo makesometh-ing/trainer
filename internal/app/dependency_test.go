@@ -9,15 +9,14 @@ import (
 	"github.com/makesometh-ing/trainer/internal/skills"
 )
 
-func TestAddDisabledShowsExplanatoryMessage(t *testing.T) {
+func TestAddDisabledTaggedInPalette(t *testing.T) {
 	var m tea.Model = newTestModel(browseResult(), WithAddEnabled(false))
 
 	m = press(m, ":")
-	m = press(m, "a")
 
-	out := view(m)
-	if !strings.Contains(out, "Adding skills is disabled") {
-		t.Errorf("expected explanatory message when add is disabled, got:\n%s", out)
+	out := plain(view(m))
+	if !strings.Contains(out, "disabled without npx") {
+		t.Errorf("expected the 'disabled without npx' tag for add, got:\n%s", out)
 	}
 }
 

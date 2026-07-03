@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -91,32 +90,5 @@ func TestMissingNodeAndNPMRecordedAsMissing(t *testing.T) {
 	}
 	if !status.NPXAvailable {
 		t.Error("expected NPXAvailable true even when node/npm are missing")
-	}
-}
-
-func TestConfirmContinueWithoutNPX(t *testing.T) {
-	cases := []struct {
-		name  string
-		input string
-		want  bool
-	}{
-		{"empty defaults to no", "\n", false},
-		{"n is no", "n\n", false},
-		{"y is yes", "y\n", true},
-		{"uppercase Y is yes", "Y\n", true},
-		{"yes word is yes", "yes\n", true},
-		{"junk defaults to no", "maybe\n", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var out strings.Builder
-			got := ConfirmContinueWithoutNPX(strings.NewReader(tc.input), &out)
-			if got != tc.want {
-				t.Errorf("input %q: got %v, want %v", tc.input, got, tc.want)
-			}
-			if !strings.Contains(out.String(), "Continue?") {
-				t.Errorf("expected prompt to be written, got %q", out.String())
-			}
-		})
 	}
 }

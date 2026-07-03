@@ -234,18 +234,18 @@ func TestEscClosesWizardWithoutAdding(t *testing.T) {
 	}
 }
 
-func TestAddDisabledDoesNotOpenWizard(t *testing.T) {
+func TestAddDisabledIsInertAndShowsNoStatus(t *testing.T) {
 	var m tea.Model = newTestModel(browseResult(), WithAddEnabled(false))
 
 	m = press(m, ":")
-	m = press(m, "a")
+	m = press(m, "a") // a dimmed command is inert
 
 	out := view(m)
 	if strings.Contains(out, "Skill source") {
 		t.Errorf("expected no wizard when add is disabled, got:\n%s", out)
 	}
-	if !strings.Contains(out, "disabled") {
-		t.Errorf("expected an explanatory disabled message, got:\n%s", out)
+	if hasRedText(out) {
+		t.Errorf("expected no red status text when a dimmed command is pressed, got:\n%s", out)
 	}
 }
 

@@ -1,9 +1,6 @@
 package runtime
 
 import (
-	"bufio"
-	"fmt"
-	"io"
 	"os/exec"
 	"strings"
 )
@@ -72,16 +69,4 @@ func SystemVersion(name string) string {
 		return ""
 	}
 	return string(out)
-}
-
-func ConfirmContinueWithoutNPX(in io.Reader, out io.Writer) bool {
-	_, _ = fmt.Fprintln(out, "npx is not available. Adding skills will be disabled.")
-	_, _ = fmt.Fprint(out, "Continue? [y/N] ")
-
-	scanner := bufio.NewScanner(in)
-	if !scanner.Scan() {
-		return false
-	}
-	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
-	return answer == "y" || answer == "yes"
 }

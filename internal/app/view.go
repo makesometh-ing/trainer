@@ -36,9 +36,9 @@ func (m Model) View() tea.View {
 	if m.confirm != nil {
 		body = m.overlayCenter(body, m.renderConfirm())
 	}
-	if m.status != "" {
-		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderStatus())
-	}
+	// The footer is always the bottom row. renderFooter returns "" while a modal
+	// is open, so the reserved row stays blank rather than shifting the panes.
+	body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderFooter())
 	v := tea.NewView(body)
 	v.AltScreen = true
 	return v
@@ -79,7 +79,13 @@ func (m Model) renderPalette() string {
 		Bold(true).
 		Render("Commands")
 
-	cmd := func(key, label string) string {
+	cmd := func(key, label string, disabled bool) string {
+		if disabled {
+			// A dimmed command is muted and carries a tag naming the reason. The
+			// tag never mentions lockfiles or any internal mechanism.
+			dim := lipgloss.NewStyle().Foreground(m.theme.Muted)
+			return dim.Render("("+key+") "+label) + "  " + dim.Render("disabled without npx")
+		}
 		k := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(" + key + ")")
 		l := lipgloss.NewStyle().Foreground(m.theme.Fg).Render(label)
 		return k + " " + l
@@ -88,11 +94,11 @@ func (m Model) renderPalette() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		"",
-		cmd("a", "add skill"),
-		cmd("d", "delete skill"),
-		cmd("u", "update all skills"),
+		cmd("a", "add skill", m.addCmdDisabled()),
+		cmd("d", "delete skill", m.deleteCmdDisabled()),
+		cmd("u", "update all skills", m.addCmdDisabled()),
 		"",
-		cmd("esc", "cancel"),
+		cmd("esc", "cancel", false),
 	)
 
 	return lipgloss.NewStyle().
@@ -100,12 +106,6 @@ func (m Model) renderPalette() string {
 		BorderForeground(m.theme.ActiveBorder).
 		Padding(0, 2).
 		Render(body)
-}
-
-func (m Model) renderStatus() string {
-	return lipgloss.NewStyle().
-		Foreground(m.theme.Error).
-		Render(m.status)
 }
 
 func (m Model) renderSkillList() string {
@@ -589,13 +589,18 @@ const paneVerticalChrome = 2
 // frameMargin is the blank margin left around the whole app frame.
 const frameMargin = 1
 
+// footerHeight is the single row reserved at the bottom for the context footer.
+const footerHeight = 1
+
 // paneHeight is the outer height of each pane (including its border), sized so
-// the whole frame plus its margin fits within the terminal height.
+// the whole frame plus its margin and the footer row fits within the terminal
+// height. The footer row is reserved unconditionally, so opening a modal (which
+// blanks the footer) does not resize the panes.
 func (m Model) paneHeight() int {
 	if m.height <= 0 {
 		return defaultContentHeight + paneVerticalChrome
 	}
-	h := m.height - frameMargin
+	h := m.height - frameMargin - footerHeight
 	if h < paneVerticalChrome+1 {
 		h = paneVerticalChrome + 1
 	}

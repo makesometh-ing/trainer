@@ -67,7 +67,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case key.Matches(msg, m.keys.palette):
 		m.palette = true
-		m.status = ""
 		return m, nil
 	case key.Matches(msg, m.keys.help):
 		m.help = true
@@ -268,17 +267,23 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "esc":
 		m.palette = false
 	case key.Matches(msg, m.keys.addCmd):
-		m.palette = false
-		if !m.addEnabled {
-			m.status = "Adding skills is disabled: npx is not available."
+		// A dimmed command is inert: the palette stays open and nothing runs.
+		if m.addCmdDisabled() {
 			return m, nil
 		}
+		m.palette = false
 		m.wizard = newAddWizard(m.sshKeys, m.theme)
 		return m, m.wizard.form.Init()
 	case key.Matches(msg, m.keys.deleteCmd):
+		if m.deleteCmdDisabled() {
+			return m, nil
+		}
 		m.palette = false
 		return m.startDelete()
 	case key.Matches(msg, m.keys.updateCmd):
+		if m.addCmdDisabled() {
+			return m, nil
+		}
 		m.palette = false
 		return m.runUpdate()
 	}

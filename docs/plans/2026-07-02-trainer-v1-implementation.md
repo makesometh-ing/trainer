@@ -75,7 +75,7 @@ internal/app/{theme,keymap,model,update,view,scope}.go
 | Final | Full verification + manual smoke | 13 | DONE |
 | 10 | Multi-scope browsing: harness registry, symlink-aware scanner, two-level Scope pane (Global / Project sections) + counts, per-scope lock, scope-scoped list, hide empty scopes/sections | new (v1.0) | DONE |
 | 11 | Scope-aware actions: add passes no scope flag (npx prompts scope); delete passes `--global` by the skill's scope; rescan all scopes | new (v1.0) | DONE |
-| 12 | Context footer + palette-dimmed commands: permanent bottom keybind bar per context; drop the persistent status line and the pre-TUI npx prompt; dim npx-only commands in the palette with a `disabled without npx` tag | new (v1.0) | TODO |
+| 12 | Context footer + palette-dimmed commands: permanent bottom keybind bar per context; drop the persistent status line and the pre-TUI npx prompt; dim npx-only commands in the palette with a `disabled without npx` tag | new (v1.0) | DONE |
 
 ---
 
@@ -950,11 +950,12 @@ to `[]ScanResult` + `selectedScope`, then five view/navigation cycles.
 
 ---
 
-## Slice 12: Context footer + palette-dimmed commands — TODO
+## Slice 12: Context footer + palette-dimmed commands — DONE
 
-**Status:** Not started. Target v1.0. Adds a permanent context keybind footer,
-retires the persistent status line, and moves all `npx`-unavailability into the
-command palette.
+**Status:** Done. v1.0. Adds a permanent context keybind footer, retires the
+persistent status line, and moves all `npx`-unavailability into the command
+palette. Thirteen RED→GREEN cycles plus the cleanup deletions; `make verify`
+passes with 0 lint issues.
 
 **What the user asked for (design, grilled 2026-07-03):**
 - A permanent bottom row like herdr's prefix bar: a leading accent chip naming
@@ -1073,6 +1074,43 @@ command palette.
   item so it is never dropped. The global tail (`: commands`, `q quit`,
   `h/l move focus`) is trimmed before the context keys.
 - Chip labels are UI copy, not new domain terms; no glossary/ADR change.
+
+**Implementation decisions & handoff notes for Slice 12:**
+- Footer key text comes from the keymap bindings (`b.Help().Key`); the footer
+  descriptions are their own copy (`select`, `commands`, `keys`, ...), distinct
+  from the help modal's wording. `footerContext()` resolves state → context and
+  `footerParts()` maps context → chip + `footerItem` list; `renderFooter()`
+  styles and joins, returning `""` for `ctxHidden` (any overlay open).
+- The footer row is reserved unconditionally: `paneHeight()` subtracts
+  `footerHeight` (1) always, so opening a modal (which blanks the footer) does
+  not resize the panes. `View()` joins `renderFooter()` as the bottom row in
+  every state.
+- The palette dim rule reuses the exact `runDelete` gate:
+  `actions.DeleteStrategy(selected) == StrategyNPXRemove && !lockedDeleteEnabled`
+  for delete, and `!addEnabled` for add/update. A dimmed key is inert in
+  `handlePaletteKey` (palette stays open, nothing runs). The `disabled without
+  npx` tag never names lockfiles.
+- Truncation reserves the `… ? keys` suffix width first, then greedily keeps a
+  left prefix of the non-help items; `q quit` (after `? keys` in order) is
+  dropped with no trailing ellipsis. All measurement uses `lipgloss.Width`.
+- The `m.status` field, `renderStatus`, and every `m.status` assignment are
+  removed. A failed on-disk delete (`os.RemoveAll` errors) shows no message; the
+  rescan re-lists the still-present skill, so the failure is visible by the skill
+  not disappearing.
+- `runtime.ConfirmContinueWithoutNPX` and its test are removed; `main.go` drops
+  the pre-TUI prompt and the alt-screen-wiped `printDependencies` printout and
+  always launches.
+
+**Files created/changed in Slice 12:**
+- New: `internal/app/footer.go`, `internal/app/footer_test.go`.
+- Changed: `internal/app/view.go` (footer row, `paneHeight`, palette dim,
+  `renderStatus` removed), `internal/app/model.go` (`status` field removed,
+  `addCmdDisabled`), `internal/app/delete.go` (`deleteCmdDisabled`, no status),
+  `internal/app/update.go` (inert dispatch, no status), `internal/app/updateskills.go`
+  (no status), `cmd/trainer/main.go`, `internal/runtime/dependencies.go` +
+  `dependencies_test.go` (`ConfirmContinueWithoutNPX` removed), and the
+  `palette_test.go` / `dependency_test.go` / `add_test.go` / `delete_test.go`
+  tests rewritten to the dim-tag behavior.
 
 ---
 
