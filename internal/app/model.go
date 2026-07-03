@@ -20,10 +20,10 @@ const (
 )
 
 type Model struct {
-	theme  Theme
-	keys   keymap
-	scope  skills.Scope
-	skills []skills.Skill
+	theme         Theme
+	keys          keymap
+	results       []skills.ScanResult
+	selectedScope int
 
 	search       textinput.Model
 	filter       originFilter
@@ -66,8 +66,8 @@ type Option func(*Model)
 // Bubble Tea runtime (suspending the TUI for interactive npx in production).
 type AddRunner func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd
 
-// RescanFunc reloads skills from disk after an add or delete action.
-type RescanFunc func() skills.ScanResult
+// RescanFunc reloads every scope from disk after an add or delete action.
+type RescanFunc func() []skills.ScanResult
 
 func WithAddEnabled(enabled bool) Option {
 	return func(m *Model) {
@@ -105,12 +105,11 @@ func WithRescan(rescan RescanFunc) Option {
 	}
 }
 
-func NewModel(result skills.ScanResult, opts ...Option) Model {
+func NewModel(results []skills.ScanResult, opts ...Option) Model {
 	m := Model{
 		theme:               GruvboxDarkHard(),
 		keys:                newKeymap(),
-		scope:               result.Scope,
-		skills:              result.Skills,
+		results:             results,
 		search:              newSearchInput(),
 		focus:               paneSkills,
 		addEnabled:          true,
@@ -125,6 +124,15 @@ func NewModel(result skills.ScanResult, opts ...Option) Model {
 	}
 	m.syncContent()
 	return m
+}
+
+// currentSkills returns the skills of the selected scope, or nil when there are
+// no scopes.
+func (m Model) currentSkills() []skills.Skill {
+	if m.selectedScope < 0 || m.selectedScope >= len(m.results) {
+		return nil
+	}
+	return m.results[m.selectedScope].Skills
 }
 
 func (m Model) AddEnabled() bool {

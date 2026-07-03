@@ -30,9 +30,13 @@ func main() {
 		}
 	}
 
-	root := skills.DefaultSkillsRoot(home)
-	lockPath := skills.DefaultGlobalLockPath(home)
-	result := skills.ScanGlobal(root, lockPath)
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "trainer: cannot resolve working directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	results := skills.ScanAll(home, cwd)
 
 	sshDir := filepath.Join(home, ".ssh")
 	keys, err := ssh.FindKeyPairs(sshDir)
@@ -43,12 +47,12 @@ func main() {
 	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
 		return tea.ExecProcess(cmd, done)
 	}
-	rescan := func() skills.ScanResult {
-		return skills.ScanGlobal(root, lockPath)
+	rescan := func() []skills.ScanResult {
+		return skills.ScanAll(home, cwd)
 	}
 
 	model := app.NewModel(
-		result,
+		results,
 		app.WithAddEnabled(deps.NPXAvailable),
 		app.WithLockedDeleteEnabled(deps.NPXAvailable),
 		app.WithSSHKeys(keys),

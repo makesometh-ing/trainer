@@ -10,7 +10,7 @@ import (
 )
 
 func TestPaletteOpensAsModalWithCommands(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, ":")
 
@@ -27,7 +27,7 @@ func TestPaletteOpensAsModalWithCommands(t *testing.T) {
 }
 
 func TestPaletteQuitsWithQ(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, ":")
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
@@ -41,7 +41,7 @@ func TestPaletteQuitsWithQ(t *testing.T) {
 
 func TestPaletteUpdateRunsWhenNPXAvailable(t *testing.T) {
 	ran := false
-	var m tea.Model = NewModel(browseResult(),
+	var m tea.Model = newTestModel(browseResult(),
 		WithAddEnabled(true),
 		WithAddRunner(func(_ *exec.Cmd, _ func(error) tea.Msg) tea.Cmd {
 			ran = true
@@ -57,7 +57,7 @@ func TestPaletteUpdateRunsWhenNPXAvailable(t *testing.T) {
 
 func TestPaletteUpdateDisabledWithoutNPX(t *testing.T) {
 	ran := false
-	var m tea.Model = NewModel(browseResult(),
+	var m tea.Model = newTestModel(browseResult(),
 		WithAddEnabled(false),
 		WithAddRunner(func(_ *exec.Cmd, _ func(error) tea.Msg) tea.Cmd {
 			ran = true
@@ -75,7 +75,7 @@ func TestPaletteUpdateDisabledWithoutNPX(t *testing.T) {
 }
 
 func TestPaletteClosesOnEsc(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, ":")
 	m = press(m, "esc")
@@ -86,7 +86,7 @@ func TestPaletteClosesOnEsc(t *testing.T) {
 }
 
 func TestPaletteIsCenteredWithinFrame(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = resize(m, 120, 40)
 	m = press(m, ":")
 

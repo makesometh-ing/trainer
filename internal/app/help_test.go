@@ -8,7 +8,7 @@ import (
 )
 
 func TestHelpModalListsBindings(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = resize(m, 120, 40)
 	m = press(m, "?")
 
@@ -21,7 +21,7 @@ func TestHelpModalListsBindings(t *testing.T) {
 }
 
 func TestHelpModalKeysAreAccurate(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = resize(m, 120, 40)
 	m = press(m, "?")
 
@@ -37,7 +37,7 @@ func TestHelpModalKeysAreAccurate(t *testing.T) {
 }
 
 func TestHelpModalClosesOnEsc(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = resize(m, 120, 40)
 	m = press(m, "?")
 	if !strings.Contains(plain(view(m)), "update all skills") {

@@ -2,31 +2,47 @@
 
 ## Goal
 
-Build Trainer, a hyper-focused Go terminal UI for browsing, inspecting, adding, and deleting globally installed agent skills.
+Build Trainer, a hyper-focused Go terminal UI for browsing, inspecting, adding, and deleting agent skills across global and project scopes.
 
 ## Non-goals
 
-- Do not support project-specific skills in v1.
-- Do not support agent-specific skill directories in v1.
 - Do not keep a Trainer-owned database, cache, or persistent index.
 - Do not embed a true interactive terminal inside the TUI in v1.
 - Do not depend on the external `gum` binary.
 - Do not preview image or binary assets in v1.
 
-## Source of truth
+## Source of truth and scopes
 
-Trainer rebuilds transient in-memory state from local files at startup and after add/delete actions.
+Trainer rebuilds transient in-memory state from local files at startup and after add/delete/update actions. The filesystem determines which skills exist; a scope's lock contributes source metadata when present.
 
-V1 scans only:
+A **scope** is one skills directory Trainer scans. Scopes are grouped into two **sections**:
 
-```text
-~/.agents/skills/*/SKILL.md
-~/.agents/.skill-lock.json
-```
+- **Global** — locations under the user's home directory.
+- **Project** — locations relative to the directory Trainer is launched in (the current working directory). Trainer does not walk up to a repository root; the project is exactly the launch directory.
 
-The filesystem determines which skills exist. The lockfile contributes source metadata when available.
+Each scope is one entry in a **harness registry**: an extensible list where each entry defines its label, section, skills directory, and optional lock path. Adding a harness is a single new registry entry with no other code change — the scanner, scope pane, and actions all loop over the registry. The starting registry:
 
-The global lockfile is maintained by `npx skills`; Trainer reads it but does not treat it as its own database.
+| Scope | Section | Skills directory | Lock |
+|-------|------|------------------|------|
+| `.agents` | Global | `~/.agents/skills/` | `~/.agents/.skill-lock.json` |
+| `claude` | Global | `~/.claude/skills/` | none |
+| `codex` | Global | `~/.codex/skills/` | none |
+| `opencode` | Global | `~/.config/opencode/skills/` | none |
+| `pi` | Global | `~/.pi/agent/skills/` | none |
+| `cursor` | Global | `~/.cursor/skills/` | none |
+| `.agents` | Project | `<cwd>/.agents/skills/` | `<cwd>/skills-lock.json` |
+| `claude` | Project | `<cwd>/.claude/skills/` | none |
+| `pi` | Project | `<cwd>/.pi/skills/` | none |
+
+Agents whose project path is `.agents/skills` (codex, opencode, cursor) share the `.agents` project scope, so the project section has at most three scopes: `.agents`, `claude`, `pi`.
+
+Scanning rules:
+
+- A scope's directory is read one level deep. Each child that resolves to a directory containing `SKILL.md` is a skill, whether it is a real directory or a symlink. `npx skills` installs to the canonical `.agents` store and symlinks (or, with `--copy`, copies) into each agent's directory, so harness scopes are mostly symlinks or copies; Trainer follows both and does not treat a symlink specially.
+- Only the `.agents` scopes read a lock. A skill in a scope that has a lock is `remote` when the lock lists it (its `source` is shown), otherwise `local`. Harness scopes have no lock, so every skill in them is `local`; Trainer does not resolve a harness symlink back to the `.agents` lock to reclassify it.
+- A scope with no skills is not shown. A section with no non-empty scopes is not shown.
+
+The lock files are maintained by `npx skills`; Trainer reads them but does not treat them as its own database.
 
 ## Skill format
 
@@ -76,7 +92,29 @@ Relevant schema fields:
 }
 ```
 
-Skill list rows show `source` when the skill is present in the lockfile. Otherwise they show the literal label `local`. (The full local filesystem path is shown in the Details meta block, not in the list row.)
+Trainer reads a second lock for the project section, at the project root, with a different name and schema:
+
+```text
+<project root>/skills-lock.json
+```
+
+```json
+{
+  "version": 1,
+  "skills": {
+    "skill-name": {
+      "source": "owner/repo",
+      "sourceType": "github",
+      "skillPath": "skills/.../SKILL.md",
+      "computedHash": "..."
+    }
+  }
+}
+```
+
+Both locks are a `version` and a `skills` map keyed by skill name, so one reader parses both; fields a schema omits (for example `sourceUrl` in the project lock, or `computedHash` in the global lock) are just empty or ignored. Only the `.agents` scopes consult a lock; harness scopes never do, so every skill in a harness scope is `local`.
+
+Skill list rows show `source` when the selected scope has a lock listing the skill. Otherwise they show the literal label `local`. (The full local filesystem path is shown in the Details meta block, not in the list row.)
 
 Skill detail headers show:
 
@@ -156,17 +194,28 @@ filter.
 
 ### Pane 1: Scope
 
-V1 contains exactly one scope:
+The Scope pane is a two-level tree. Each section that has skills is a header
+(`Global`, `Project`); under it, one row per scope that has skills, showing the
+scope label and its skill count:
 
 ```text
 Global
+  .agents   37
+  claude     3
+  codex      4
+Project
+  .agents    2
 ```
 
-Do not render disabled future placeholders. Future scopes may be agent names such as `claude` or `codex`, or project paths.
+Only scopes with at least one skill are listed, and a section with no such scopes
+is omitted (a project with no skills shows no `Project` section). Selecting a
+scope shows exactly that scope's skills in the Skills pane; there is no combined
+view across scopes.
 
-`j` / `k` act on the focused pane's list: they move the skills selection only
-while the Skills pane is focused. With a single scope they do nothing in the
-Scope pane; that key moves the scope selection once there is more than one scope.
+While the Scope pane is focused, `j` / `k` move the selection between scope rows
+(skipping the section headers), and moving to a new scope updates the Skills and
+Details panes. `l` / `enter` move focus to the Skills pane. `j` / `k` remain
+inert in the Scope pane only when there is a single scope.
 
 ### Pane 2: Skills
 
@@ -420,42 +469,53 @@ Step 3 suspends the TUI and runs interactive `npx skills` directly in the termin
 Without selected SSH key:
 
 ```bash
-npx skills add <source> -g
+npx skills add <source>
 ```
 
 With selected SSH key:
 
 ```bash
-GIT_SSH_COMMAND="ssh -i <key-path>" npx skills add <source> -g
+GIT_SSH_COMMAND="ssh -i <key-path>" npx skills add <source>
 ```
 
-Trainer does not pass agent flags. The user can make all standard `npx skills` choices during execution. After the command exits, Trainer resumes and refreshes from disk. Exit code does not prevent refresh.
+Trainer passes neither an agent flag nor a scope flag. Interactive `npx skills`
+prompts for which skills to install, which agents to install to, and the
+installation scope (Project or Global); the user makes those choices in the npx
+prompts, so the add wizard has no scope step. After the command exits, Trainer
+resumes and refreshes every scope from disk. Exit code does not prevent refresh.
 
 ## Delete flow
 
 `:d` starts delete confirmation for the selected skill.
 
 The confirmation asks `Delete <skill-name>?` and explains that this removes the
-skill from the global skills directory and may leave broken symlinks. `y`
-confirms; any other key cancels.
+skill and may leave broken symlinks. `y` confirms; any other key cancels.
 
-If the selected skill has lockfile metadata, run:
+If the selected skill's scope has a lock listing it, run `npx skills remove`,
+adding `--global` when the skill is in a Global-section scope and omitting it for
+a Project-section scope (which runs against the launch directory):
 
 ```bash
-npx skills remove -g <skill-name>
+npx skills remove <skill-name>            # project scope
+npx skills remove <skill-name> --global   # global scope
 ```
 
-If the selected skill is not present in the lockfile, remove the selected skill directory directly after confirmation.
+Trainer already knows which scope the selected skill is in, so it passes the
+exact scope flag directly; the delete is deterministic and needs no prompt. If the selected skill is not in a lock (any harness scope, or
+an `.agents` skill absent from the lock), remove that skill's own directory
+entry at its scope path directly after confirmation; removing a symlink leaves
+the canonical skill intact.
 
-After deletion, Trainer refreshes from disk.
+After deletion, Trainer refreshes every scope from disk.
 
 ## Update flow
 
-`:u` updates all installed skills. It suspends the TUI and runs interactive
+`:u` updates installed skills. It suspends the TUI and runs interactive
 `npx skills@latest update` directly in the terminal, the same suspend-and-run
-mechanism the add flow uses, so the user sees and can answer any prompts. After
-the command exits, Trainer resumes and refreshes from disk. Exit code does not
-prevent the refresh.
+mechanism the add flow uses. Interactive `npx skills update` prompts for the
+scope (Project or Global), so the user chooses what to update there and Trainer
+passes no scope flag. After the command exits, Trainer resumes and refreshes
+every scope from disk. Exit code does not prevent the refresh.
 
 Update requires `npx`. When `npx` is unavailable, `:u` is disabled and shows an
 explanatory message, the same way `:a` is.
@@ -586,11 +646,13 @@ internal/app/keys.go          # help-modal binding definitions
 internal/app/help.go          # ? help modal
 internal/app/theme.go
 internal/app/search.go        # search box + origin filter + visible-skills
+internal/app/scope.go         # scope sections + two-level scope navigation
 internal/app/add.go           # add wizard (Huh form) + run/refresh
 internal/app/huhtheme.go      # Gruvbox theme for the Huh form
 internal/app/delete.go        # delete confirm + strategy dispatch
 internal/app/updateskills.go  # :u update flow
 internal/skills/scanner.go
+internal/skills/harness.go       # scope registry + ScanAll(home, cwd)
 internal/skills/skill.go
 internal/skills/lockfile.go
 internal/skills/frontmatter.go
@@ -607,10 +669,10 @@ internal/ssh/keys.go
 
 Responsibilities:
 
-- `cmd/trainer/main.go`: program entrypoint, dependency check, scan, runner wiring
+- `cmd/trainer/main.go`: program entrypoint, dependency check, resolve home + cwd, scan all scopes, runner wiring
 - `internal/app`: Bubble Tea model, input handling, rendering layout, modal state
   (command palette, add wizard, delete confirm, `?` help), search/filter
-- `internal/skills`: filesystem scan, frontmatter parsing, lockfile merge
+- `internal/skills`: scope registry, filesystem scan (following symlinks), frontmatter parsing, per-scope lock merge
 - `internal/render`: Markdown, code, and Gruvbox styling
 - `internal/actions`: add / update / delete command construction and execution
 - `internal/runtime`: startup dependency detection for `node`, `npm`, and `npx`

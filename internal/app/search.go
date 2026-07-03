@@ -54,8 +54,9 @@ func newSearchInput() textinput.Model {
 // current search text, in list order. It is the single source of truth for what
 // the Skills pane shows; selection indexes into this slice.
 func (m Model) visibleSkills() []skills.Skill {
-	byOrigin := make([]skills.Skill, 0, len(m.skills))
-	for _, s := range m.skills {
+	cur := m.currentSkills()
+	byOrigin := make([]skills.Skill, 0, len(cur))
+	for _, s := range cur {
 		switch m.filter {
 		case originRemote:
 			if s.Lock == nil {

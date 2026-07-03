@@ -11,7 +11,7 @@ func focusOf(m tea.Model) pane {
 }
 
 func TestHLMoveFocusBetweenPanes(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	if focusOf(m) != paneSkills {
 		t.Fatalf("expected initial focus on skills pane, got %v", focusOf(m))
 	}
@@ -43,7 +43,7 @@ func TestHLMoveFocusBetweenPanes(t *testing.T) {
 }
 
 func TestEnterMovesFocusIntoDetail(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, "enter")
 	if focusOf(m) != paneDetail {

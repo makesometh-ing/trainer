@@ -74,7 +74,7 @@ func twoSSHKeys() []ssh.KeyPair {
 // --- cycles ----------------------------------------------------------------
 
 func TestAddWizardOpensSourcePrompt(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = openWizard(m)
 
@@ -93,7 +93,7 @@ func TestEmptySourceDoesNotComplete(t *testing.T) {
 		ran = true
 		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+	var m tea.Model = newTestModel(browseResult(), WithAddRunner(runner))
 
 	m = openWizard(m)
 	m = wsend(m, namedKey(tea.KeyEnter)) // enter with no source typed
@@ -107,7 +107,7 @@ func TestEmptySourceDoesNotComplete(t *testing.T) {
 }
 
 func TestSSHStepShownForSSHSourceWithMultipleKeys(t *testing.T) {
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()))
 
 	m = openWizard(m)
 	m = wtype(m, "git@github.com:owner/repo.git")
@@ -125,7 +125,7 @@ func TestSSHStepSkippedForNonSSHSource(t *testing.T) {
 		ran = true
 		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
 
 	m = openWizard(m)
 	m = wtype(m, "owner/repo")
@@ -169,7 +169,7 @@ func TestSSHKeySelectionPassesChosenKey(t *testing.T) {
 		env = cmd.Env
 		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
 
 	m = openWizard(m)
 	m = wtype(m, "git@github.com:owner/repo.git")
@@ -190,7 +190,7 @@ func TestNonSSHSourceAttachesNoKey(t *testing.T) {
 		env = cmd.Env
 		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
 
 	m = openWizard(m)
 	m = wtype(m, "owner/repo")
@@ -202,7 +202,7 @@ func TestNonSSHSourceAttachesNoKey(t *testing.T) {
 }
 
 func TestCtrlCQuitsFromWizard(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = openWizard(m)
 
 	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Mod: tea.ModCtrl, Code: 'c'}))
@@ -220,7 +220,7 @@ func TestEscClosesWizardWithoutAdding(t *testing.T) {
 		ran = true
 		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+	var m tea.Model = newTestModel(browseResult(), WithAddRunner(runner))
 
 	m = openWizard(m)
 	m = wtype(m, "owner/repo")
@@ -235,7 +235,7 @@ func TestEscClosesWizardWithoutAdding(t *testing.T) {
 }
 
 func TestAddDisabledDoesNotOpenWizard(t *testing.T) {
-	var m tea.Model = NewModel(browseResult(), WithAddEnabled(false))
+	var m tea.Model = newTestModel(browseResult(), WithAddEnabled(false))
 
 	m = press(m, ":")
 	m = press(m, "a")
@@ -253,7 +253,7 @@ func TestAddDisabledDoesNotOpenWizard(t *testing.T) {
 // overlay within the terminal, not appended below the already-full-height body.
 func TestWizardOverlayFitsWithinTerminal(t *testing.T) {
 	const w, h = 100, 30
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m, _ = m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	m = openWizard(m)
 
@@ -273,7 +273,7 @@ func TestWizardOverlayFitsWithinTerminal(t *testing.T) {
 // command palette. Huh's default theme colors the select selector fuchsia
 // (#F780E2 = 247;128;226); the Gruvbox theme must replace it.
 func TestWizardUsesGruvboxTheme(t *testing.T) {
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()))
 
 	m = openWizard(m)
 	m = wtype(m, "git@github.com:owner/repo.git")
@@ -291,7 +291,7 @@ func TestWizardUsesGruvboxTheme(t *testing.T) {
 // (form.Init requests the size). The modal height must not change when a window
 // size arrives while it is open.
 func TestWizardModalDoesNotJumpWhenSizeArrives(t *testing.T) {
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
+	var m tea.Model = newTestModel(browseResult(), WithSSHKeys(twoSSHKeys()))
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = openWizard(m)
 
@@ -311,15 +311,15 @@ func TestConfirmingAddRunsCommandThenRescans(t *testing.T) {
 		return func() tea.Msg { return done(nil) }
 	}
 	rescanned := false
-	rescan := func() skills.ScanResult {
+	rescan := func() []skills.ScanResult {
 		rescanned = true
-		return skills.ScanResult{
-			Scope:  skills.Scope{Name: "Global"},
+		return []skills.ScanResult{{
+			Scope:  skills.Scope{Name: ".agents", Section: skills.SectionGlobal},
 			Skills: []skills.Skill{{Name: "charlie", Path: "/root/charlie"}},
-		}
+		}}
 	}
 
-	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner), WithRescan(rescan))
+	var m tea.Model = newTestModel(browseResult(), WithAddRunner(runner), WithRescan(rescan))
 
 	m = openWizard(m)
 	m = wtype(m, "owner/repo")

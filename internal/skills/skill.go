@@ -2,9 +2,19 @@ package skills
 
 import "time"
 
+// Section groups scopes by where they live: under the user's home (Global) or
+// relative to the launch directory (Project).
+type Section string
+
+const (
+	SectionGlobal  Section = "Global"
+	SectionProject Section = "Project"
+)
+
 type Scope struct {
-	Name string
-	Path string
+	Name    string
+	Section Section
+	Path    string
 }
 
 type Skill struct {

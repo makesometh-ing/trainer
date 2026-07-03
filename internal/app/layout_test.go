@@ -12,7 +12,7 @@ import (
 )
 
 func TestPaneLabelsShowShortcuts(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	out := view(m)
 	for _, want := range []string{"(1) Scope", "(2) Skills", "(3) Details"} {
@@ -23,7 +23,7 @@ func TestPaneLabelsShowShortcuts(t *testing.T) {
 }
 
 func TestDetailTabLabelsShowShortcuts(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	out := view(m)
 	for _, want := range []string{"(i) SKILL.md", "(r) References", "(s) Scripts", "(a) Assets"} {
@@ -39,7 +39,7 @@ func resize(m tea.Model, w, h int) tea.Model {
 }
 
 func TestTooSmallTerminalShowsResizeMessage(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = resize(m, 20, 5)
 
@@ -55,7 +55,7 @@ func TestTooSmallTerminalShowsResizeMessage(t *testing.T) {
 }
 
 func TestGrowingBackRestoresLayout(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = resize(m, 20, 5)
 	m = resize(m, 120, 40)
@@ -72,7 +72,7 @@ func TestGrowingBackRestoresLayout(t *testing.T) {
 }
 
 func TestPanesReflowToWidth(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = resize(m, 100, 40)
 	narrow := lipgloss.Width(view(m))
@@ -90,7 +90,7 @@ func TestPanesReflowToWidth(t *testing.T) {
 
 func TestFrameFillsTerminalWidth(t *testing.T) {
 	for _, w := range []int{100, 120, 161} {
-		var m tea.Model = NewModel(browseResult())
+		var m tea.Model = newTestModel(browseResult())
 		m = resize(m, w, 40)
 		mm := m.(Model)
 		t.Logf("w=%d scope=%d list=%d detail=%d", w, mm.scopeWidth(), mm.listWidth(), mm.detailPaneWidth())
@@ -109,14 +109,14 @@ func manySkills(n int) skills.ScanResult {
 		})
 	}
 	return skills.ScanResult{
-		Scope:  skills.Scope{Name: "Global", Path: "/root"},
+		Scope:  skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: list,
 	}
 }
 
 func TestFrameFitsWithinTerminal(t *testing.T) {
 	const w, h = 100, 30
-	var m tea.Model = NewModel(manySkills(80))
+	var m tea.Model = newTestModel(manySkills(80))
 	m = resize(m, w, h)
 
 	out := view(m)

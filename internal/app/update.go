@@ -200,8 +200,7 @@ func (m *Model) moveContent(delta int) {
 	case paneSkills:
 		m.moveSelection(delta)
 	case paneScope:
-		// One scope in v1, so there is nothing to move. Scope-selection movement
-		// lands here when more scopes are added.
+		m.moveScope(delta)
 	}
 }
 

@@ -193,6 +193,162 @@ func TestScanGlobalKeepsRawFrontmatter(t *testing.T) {
 	}
 }
 
+func TestScanDiscoversSymlinkedSkillDir(t *testing.T) {
+	base := t.TempDir()
+	store := filepath.Join(base, "store")
+	scope := filepath.Join(base, "scope")
+	if err := os.MkdirAll(scope, 0o755); err != nil {
+		t.Fatalf("mkdir scope: %v", err)
+	}
+	writeSkill(t, store, "foo", skillMd("foo", "Foo thing"))
+
+	// npx skills installs to the canonical store and symlinks each skill into a
+	// harness scope. os.ReadDir reports the symlink via lstat, so entry.IsDir()
+	// is false for it; the scanner must follow the link to find SKILL.md.
+	if err := os.Symlink(filepath.Join(store, "foo"), filepath.Join(scope, "foo")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	result := Scan(scope, filepath.Join(scope, "missing.json"))
+
+	if len(result.Skills) != 1 {
+		t.Fatalf("expected 1 skill via symlink, got %d", len(result.Skills))
+	}
+	if result.Skills[0].Name != "foo" {
+		t.Errorf("name: got %q want %q", result.Skills[0].Name, "foo")
+	}
+}
+
+func TestScanIgnoresNonSkillDirsAndFiles(t *testing.T) {
+	scope := t.TempDir()
+	writeSkill(t, scope, "bar", skillMd("bar", "Bar thing"))
+	if err := os.MkdirAll(filepath.Join(scope, "notaskill"), 0o755); err != nil {
+		t.Fatalf("mkdir notaskill: %v", err)
+	}
+	mkfile(t, filepath.Join(scope, "loose.txt"), "not a skill")
+
+	result := Scan(scope, filepath.Join(scope, "missing.json"))
+
+	if len(result.Skills) != 1 || result.Skills[0].Name != "bar" {
+		t.Fatalf("expected only [bar], got %+v", result.Skills)
+	}
+}
+
+// scopeKey identifies a scan result by section and label for assertions.
+func scopeKey(r ScanResult) string {
+	return string(r.Scope.Section) + "/" + r.Scope.Name
+}
+
+func TestScanAllReturnsNonEmptyScopesTagged(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+
+	// Global .agents with one real skill and its lock location.
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "alpha", skillMd("alpha", "A"))
+	// Global claude with one symlinked skill.
+	claudeSkills := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(claudeSkills, 0o755); err != nil {
+		t.Fatalf("mkdir claude: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(home, ".agents", "skills", "alpha"), filepath.Join(claudeSkills, "alpha")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	// Global codex is present but empty.
+	if err := os.MkdirAll(filepath.Join(home, ".codex", "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir codex: %v", err)
+	}
+	// Project .agents with one skill.
+	writeSkill(t, filepath.Join(cwd, ".agents", "skills"), "proj", skillMd("proj", "P"))
+
+	results := ScanAll(home, cwd)
+
+	got := map[string]bool{}
+	for _, r := range results {
+		got[scopeKey(r)] = true
+	}
+	for _, want := range []string{"Global/.agents", "Global/claude", "Project/.agents"} {
+		if !got[want] {
+			t.Errorf("expected scope %q in results; got %v", want, got)
+		}
+	}
+	if got["Global/codex"] {
+		t.Error("empty codex scope should be omitted")
+	}
+	if got["Global/opencode"] || got["Global/cursor"] || got["Global/pi"] {
+		t.Error("absent scopes should be omitted")
+	}
+}
+
+// findScope returns the scan result for a section/label, or fails.
+func findScope(t *testing.T, results []ScanResult, key string) ScanResult {
+	t.Helper()
+	for _, r := range results {
+		if scopeKey(r) == key {
+			return r
+		}
+	}
+	t.Fatalf("scope %q not found in results", key)
+	return ScanResult{}
+}
+
+func skillByName(t *testing.T, r ScanResult, name string) Skill {
+	t.Helper()
+	for _, s := range r.Skills {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("skill %q not found in scope %q", name, r.Scope.Name)
+	return Skill{}
+}
+
+func TestScanAllAgentsScopeReadsLockHarnessDoesNot(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "foo", skillMd("foo", "Foo"))
+	mkfile(t, filepath.Join(home, ".agents", ".skill-lock.json"), `{
+  "version": 3,
+  "skills": {
+    "foo": {"source": "owner/repo", "sourceType": "github"}
+  }
+}`)
+	writeSkill(t, filepath.Join(home, ".claude", "skills"), "foo", skillMd("foo", "Foo"))
+
+	results := ScanAll(home, cwd)
+
+	agentsFoo := skillByName(t, findScope(t, results, "Global/.agents"), "foo")
+	if agentsFoo.Lock == nil || agentsFoo.Lock.Source != "owner/repo" {
+		t.Errorf(".agents foo should be remote with source owner/repo; got %+v", agentsFoo.Lock)
+	}
+	claudeFoo := skillByName(t, findScope(t, results, "Global/claude"), "foo")
+	if claudeFoo.Lock != nil {
+		t.Errorf("claude foo should be local (no lock); got %+v", claudeFoo.Lock)
+	}
+}
+
+func TestScanAllProjectLockAtCwdRoot(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+
+	writeSkill(t, filepath.Join(cwd, ".agents", "skills"), "projskill", skillMd("projskill", "P"))
+	// The project lock is a v1 schema at the launch-directory root, not inside
+	// .agents.
+	mkfile(t, filepath.Join(cwd, "skills-lock.json"), `{
+  "version": 1,
+  "skills": {
+    "projskill": {"source": "team/proj-skills", "sourceType": "github", "skillPath": "skills/projskill/SKILL.md"}
+  }
+}`)
+
+	results := ScanAll(home, cwd)
+
+	got := skillByName(t, findScope(t, results, "Project/.agents"), "projskill")
+	if got.Lock == nil || got.Lock.Source != "team/proj-skills" {
+		t.Errorf("project skill should read source from cwd skills-lock.json; got %+v", got.Lock)
+	}
+}
+
 func mkfile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

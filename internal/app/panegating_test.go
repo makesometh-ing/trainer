@@ -12,7 +12,7 @@ import (
 
 func TestSearchKeyScopedToSkillsPane(t *testing.T) {
 	// From the Details pane, `/` is inert: typing after it does not narrow.
-	var fromDetails tea.Model = NewModel(browseResult())
+	var fromDetails tea.Model = newTestModel(browseResult())
 	fromDetails = press(fromDetails, "3") // focus Details
 	for _, k := range []string{"/", "z", "z", "z"} {
 		fromDetails = press(fromDetails, k)
@@ -22,7 +22,7 @@ func TestSearchKeyScopedToSkillsPane(t *testing.T) {
 	}
 
 	// From the Skills pane (default focus), `/` opens search and narrows.
-	var fromSkills tea.Model = NewModel(browseResult())
+	var fromSkills tea.Model = newTestModel(browseResult())
 	for _, k := range []string{"/", "z", "z", "z"} {
 		fromSkills = press(fromSkills, k)
 	}
@@ -35,8 +35,8 @@ func TestSearchKeyScopedToSkillsPane(t *testing.T) {
 // they are inert (that key belongs to scope navigation once there is more than
 // one scope).
 func TestSelectionKeysInertInScopePane(t *testing.T) {
-	var m tea.Model = NewModel(browseResult()) // alpha selected
-	m = press(m, "1")                          // focus Scope
+	var m tea.Model = newTestModel(browseResult()) // alpha selected
+	m = press(m, "1")                              // focus Scope
 	m = press(m, "j")
 
 	out := plain(view(m))
@@ -50,7 +50,7 @@ func TestSelectionKeysInertInScopePane(t *testing.T) {
 
 func TestFilterKeyScopedToSkillsPane(t *testing.T) {
 	// From the Details pane, `f` is inert.
-	var fromDetails tea.Model = NewModel(browseResult())
+	var fromDetails tea.Model = newTestModel(browseResult())
 	fromDetails = press(fromDetails, "3") // focus Details
 	fromDetails = press(fromDetails, "f")
 	fromDetails = press(fromDetails, "l")     // would move the filter cursor if filtering
@@ -60,7 +60,7 @@ func TestFilterKeyScopedToSkillsPane(t *testing.T) {
 	}
 
 	// From the Skills pane, `f` opens the filter; Remote hides the local-only skill.
-	var fromSkills tea.Model = NewModel(browseResult())
+	var fromSkills tea.Model = newTestModel(browseResult())
 	fromSkills = press(fromSkills, "f")
 	fromSkills = press(fromSkills, "l")     // cursor -> Remote
 	fromSkills = press(fromSkills, "space") // apply Remote

@@ -20,10 +20,10 @@ func longContentModel() tea.Model {
 		Body:      strings.Repeat("A line of body text for the scroll fixture.\n\n", 80),
 	}
 	result := skills.ScanResult{
-		Scope:  skills.Scope{Name: "Global", Path: "/root"},
+		Scope:  skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: []skills.Skill{skill},
 	}
-	var m tea.Model = NewModel(result)
+	var m tea.Model = newTestModel(result)
 	m = resize(m, 100, 40)
 	m = press(m, "3") // focus Details; SKILL.md tab is the default
 	return m

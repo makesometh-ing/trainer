@@ -12,7 +12,7 @@ import (
 )
 
 func TestDeleteConfirmShowsWarning(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, ":")
 	m = press(m, "d")
@@ -43,19 +43,19 @@ func TestConfirmingOnDiskDeleteRemovesDirectoryAndRescans(t *testing.T) {
 	}
 
 	result := skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: root},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: root},
 		Skills: []skills.Skill{
 			{Name: "bravo", Path: skillDir},
 		},
 	}
 
 	rescanned := false
-	rescan := func() skills.ScanResult {
+	rescan := func() []skills.ScanResult {
 		rescanned = true
-		return skills.ScanResult{Scope: skills.Scope{Name: "Global", Path: root}}
+		return []skills.ScanResult{{Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: root}}}
 	}
 
-	var m tea.Model = NewModel(result, WithRescan(rescan))
+	var m tea.Model = newTestModel(result, WithRescan(rescan))
 	m = press(m, ":")
 	m = press(m, "d")
 
@@ -76,15 +76,68 @@ func TestConfirmingOnDiskDeleteRemovesDirectoryAndRescans(t *testing.T) {
 	}
 }
 
+// A harness-scope skill is a symlink into the canonical .agents store.
+// Confirming a delete must unlink the symlink and leave the canonical skill (and
+// its files) intact — deleting one agent's mirror, not the shared skill.
+func TestConfirmingSymlinkDeleteRemovesLinkNotTarget(t *testing.T) {
+	base := t.TempDir()
+
+	canonical := filepath.Join(base, ".agents", "skills", "foo")
+	if err := os.MkdirAll(canonical, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	harnessScope := filepath.Join(base, ".claude", "skills")
+	if err := os.MkdirAll(harnessScope, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(harnessScope, "foo")
+	if err := os.Symlink(canonical, link); err != nil {
+		t.Fatal(err)
+	}
+
+	// The claude harness scope has no lock, so foo is local and Path is the link.
+	result := skills.ScanResult{
+		Scope:  skills.Scope{Name: "claude", Section: skills.SectionGlobal, Path: harnessScope},
+		Skills: []skills.Skill{{Name: "foo", Path: link}},
+	}
+	rescan := func() []skills.ScanResult {
+		return skills.ScanAll(base, base)
+	}
+
+	var m tea.Model = newTestModel(result, WithRescan(rescan))
+	m = press(m, ":")
+	m = press(m, "d")
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "y"})
+	if cmd != nil {
+		// The filesystem removal happens synchronously inside Update; the returned
+		// cmd (if any) carries only the rescan follow-up, so running it is enough.
+		cmd()
+	}
+
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Errorf("expected the symlink to be removed, lstat err = %v", err)
+	}
+	if _, err := os.Stat(canonical); err != nil {
+		t.Errorf("expected the canonical skill directory to survive, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, "SKILL.md")); err != nil {
+		t.Errorf("expected the canonical SKILL.md to survive, stat err = %v", err)
+	}
+}
+
 func TestLockfileDeleteDisabledWithoutNPX(t *testing.T) {
 	result := skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: "/root"},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: []skills.Skill{
 			{Name: "alpha", Path: "/root/alpha", Lock: &skills.LockEntry{Source: "owner/alpha"}},
 		},
 	}
 
-	var m tea.Model = NewModel(result, WithLockedDeleteEnabled(false))
+	var m tea.Model = newTestModel(result, WithLockedDeleteEnabled(false))
 	m = press(m, ":")
 	m = press(m, "d")
 

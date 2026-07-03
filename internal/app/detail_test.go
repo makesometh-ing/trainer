@@ -30,12 +30,12 @@ func TestDetailFileListDoesNotOverflow(t *testing.T) {
 		refs = append(refs, skills.SkillFile{Name: name, Path: p})
 	}
 	res := skills.ScanResult{
-		Scope:  skills.Scope{Name: "Global", Path: dir},
+		Scope:  skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: dir},
 		Skills: []skills.Skill{{Name: "many", Path: dir, References: refs}},
 	}
 
 	const h = 40
-	var m tea.Model = NewModel(res)
+	var m tea.Model = newTestModel(res)
 	m = resize(m, 120, h)
 	m = press(m, "3") // focus Details
 	m = press(m, "r") // References tab: 80 files
@@ -88,7 +88,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 	}
 
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: dir},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: dir},
 		Skills: []skills.Skill{
 			{
 				Name:        "alpha",
@@ -109,7 +109,7 @@ func detailResult(t *testing.T) skills.ScanResult {
 }
 
 func TestSkillTabRendersSkillBody(t *testing.T) {
-	m := press(press(NewModel(detailResult(t)), "3"), "i")
+	m := press(press(newTestModel(detailResult(t)), "3"), "i")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Alpha Overview") {
@@ -118,7 +118,7 @@ func TestSkillTabRendersSkillBody(t *testing.T) {
 }
 
 func TestSkillTabShowsFrontmatter(t *testing.T) {
-	m := press(press(NewModel(detailResult(t)), "3"), "i")
+	m := press(press(newTestModel(detailResult(t)), "3"), "i")
 
 	out := plain(view(m))
 	// The frontmatter is shown in full: its fields, including one that is neither
@@ -138,7 +138,7 @@ func TestSkillTabShowsFrontmatter(t *testing.T) {
 }
 
 func TestReferencesTabShowsFileList(t *testing.T) {
-	m := press(press(NewModel(detailResult(t)), "3"), "r")
+	m := press(press(newTestModel(detailResult(t)), "3"), "r")
 
 	out := view(m)
 	if !strings.Contains(out, "guide.md") {
@@ -147,7 +147,7 @@ func TestReferencesTabShowsFileList(t *testing.T) {
 }
 
 func TestSelectingReferenceRendersMarkdown(t *testing.T) {
-	m := press(press(NewModel(detailResult(t)), "3"), "r")
+	m := press(press(newTestModel(detailResult(t)), "3"), "r")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "Reference Heading") {
@@ -167,7 +167,7 @@ func scriptOnlyResult(t *testing.T, name, body string) skills.ScanResult {
 		t.Fatal(err)
 	}
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: dir},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: dir},
 		Skills: []skills.Skill{{
 			Name:    "alpha",
 			Path:    dir,
@@ -177,7 +177,7 @@ func scriptOnlyResult(t *testing.T, name, body string) skills.ScanResult {
 }
 
 func TestScriptsTabHighlightsCode(t *testing.T) {
-	m := press(press(NewModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "3"), "s")
+	m := press(press(newTestModel(scriptOnlyResult(t, "run.go", "package main\n\nfunc main() {}\n")), "3"), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "func main") {
@@ -186,7 +186,7 @@ func TestScriptsTabHighlightsCode(t *testing.T) {
 }
 
 func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
-	m := press(press(NewModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "3"), "s")
+	m := press(press(newTestModel(scriptOnlyResult(t, "notes.weirdext", "raw plain content")), "3"), "s")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "raw plain content") {
@@ -195,7 +195,7 @@ func TestUnknownScriptExtensionFallsBackToPlainText(t *testing.T) {
 }
 
 func TestAssetsTabShowsNoPreview(t *testing.T) {
-	m := press(press(NewModel(detailResult(t)), "3"), "a")
+	m := press(press(newTestModel(detailResult(t)), "3"), "a")
 
 	out := plain(view(m))
 	if !strings.Contains(out, "logo.png") {
@@ -222,7 +222,7 @@ func longScriptResult(t *testing.T) skills.ScanResult {
 		t.Fatal(err)
 	}
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: dir},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: dir},
 		Skills: []skills.Skill{{
 			Name:    "alpha",
 			Path:    dir,
@@ -237,7 +237,7 @@ func sized(m tea.Model, w, h int) tea.Model {
 }
 
 func TestContentScrollbarAppearsOnOverflow(t *testing.T) {
-	var m tea.Model = NewModel(longScriptResult(t))
+	var m tea.Model = newTestModel(longScriptResult(t))
 	m = sized(m, 120, 24)
 	m = press(m, "3")
 	m = press(m, "s")
@@ -249,7 +249,7 @@ func TestContentScrollbarAppearsOnOverflow(t *testing.T) {
 }
 
 func TestScrollbarReachesBottom(t *testing.T) {
-	var m tea.Model = NewModel(longScriptResult(t)) // 100 lines: line-000..line-099
+	var m tea.Model = newTestModel(longScriptResult(t)) // 100 lines: line-000..line-099
 	m = sized(m, 120, 30)
 	m = press(m, "3") // focus Details
 	m = press(m, "s") // Scripts tab
@@ -267,7 +267,7 @@ func TestScrollbarReachesBottom(t *testing.T) {
 }
 
 func TestContentScrollbarAbsentWhenContentFits(t *testing.T) {
-	var m tea.Model = NewModel(scriptOnlyResult(t, "small.weirdext", "one\ntwo\n"))
+	var m tea.Model = newTestModel(scriptOnlyResult(t, "small.weirdext", "one\ntwo\n"))
 	m = sized(m, 120, 40)
 	m = press(m, "3")
 	m = press(m, "s")
@@ -279,7 +279,7 @@ func TestContentScrollbarAbsentWhenContentFits(t *testing.T) {
 }
 
 func TestContentScrollKeysMoveViewport(t *testing.T) {
-	var m tea.Model = NewModel(longScriptResult(t))
+	var m tea.Model = newTestModel(longScriptResult(t))
 	m = sized(m, 120, 24)
 	m = press(m, "3")
 	m = press(m, "s")
@@ -319,7 +319,7 @@ func twoReferencesResult(t *testing.T) skills.ScanResult {
 		t.Fatal(err)
 	}
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: dir},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: dir},
 		Skills: []skills.Skill{{
 			Name: "alpha",
 			Path: dir,
@@ -332,7 +332,7 @@ func twoReferencesResult(t *testing.T) skills.ScanResult {
 }
 
 func TestNoTextSectionHeaders(t *testing.T) {
-	var m tea.Model = NewModel(twoReferencesResult(t))
+	var m tea.Model = newTestModel(twoReferencesResult(t))
 	m = sized(m, 120, 40)
 	m = press(m, "3")
 	m = press(m, "r")
@@ -346,7 +346,7 @@ func TestNoTextSectionHeaders(t *testing.T) {
 }
 
 func TestSubfocusIndicatorMovesWithTab(t *testing.T) {
-	var m tea.Model = NewModel(twoReferencesResult(t))
+	var m tea.Model = newTestModel(twoReferencesResult(t))
 	m = sized(m, 120, 40)
 	m = press(m, "3")
 	m = press(m, "r")
@@ -362,7 +362,7 @@ func TestSubfocusIndicatorMovesWithTab(t *testing.T) {
 
 func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 	// List subfocus: j moves the selected file, switching rendered content.
-	var listMode tea.Model = NewModel(twoReferencesResult(t))
+	var listMode tea.Model = newTestModel(twoReferencesResult(t))
 	listMode = sized(listMode, 120, 40)
 	listMode = press(listMode, "3")
 	listMode = press(listMode, "r")
@@ -375,7 +375,7 @@ func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 	}
 
 	// Content subfocus: j scrolls content, leaving file selection unchanged.
-	var contentMode tea.Model = NewModel(twoReferencesResult(t))
+	var contentMode tea.Model = newTestModel(twoReferencesResult(t))
 	contentMode = sized(contentMode, 120, 40)
 	contentMode = press(contentMode, "3")
 	contentMode = press(contentMode, "r")
@@ -387,7 +387,7 @@ func TestTabTogglesSubfocusBetweenListAndContent(t *testing.T) {
 }
 
 func TestSkillContentHasNoLeadingBlankLine(t *testing.T) {
-	m := NewModel(detailResult(t))
+	m := newTestModel(detailResult(t))
 
 	lines := strings.Split(plain(m.currentContent()), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
@@ -397,11 +397,11 @@ func TestSkillContentHasNoLeadingBlankLine(t *testing.T) {
 
 func TestScriptsAndReferencesShowNoFilesWhenEmpty(t *testing.T) {
 	res := skills.ScanResult{
-		Scope:  skills.Scope{Name: "Global", Path: "/root"},
+		Scope:  skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: []skills.Skill{{Name: "empty", Path: "/root/empty"}},
 	}
 	for _, tab := range []string{"s", "r"} {
-		var m tea.Model = NewModel(res)
+		var m tea.Model = newTestModel(res)
 		m = sized(m, 120, 40)
 		m = press(m, "3")
 		m = press(m, tab)
@@ -412,7 +412,7 @@ func TestScriptsAndReferencesShowNoFilesWhenEmpty(t *testing.T) {
 }
 
 func TestSelectedFileUsesHighlightNotCaret(t *testing.T) {
-	var m tea.Model = NewModel(twoReferencesResult(t))
+	var m tea.Model = newTestModel(twoReferencesResult(t))
 	m = sized(m, 120, 40)
 	m = press(m, "3")
 	m = press(m, "r")

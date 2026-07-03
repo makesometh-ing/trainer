@@ -6,9 +6,9 @@
 > internal shapes. Do RED then GREEN one behavior at a time; never write all
 > tests up front. Each slice must leave the app compiling and tests passing.
 
-**Goal:** Build Trainer, a Go TUI for browsing, inspecting, adding, and deleting globally installed agent skills.
+**Goal:** Build Trainer, a Go TUI for browsing, inspecting, adding, and deleting agent skills across global and project scopes.
 
-**Architecture:** Trainer rebuilds transient in-memory state from `~/.agents/skills/*/SKILL.md` and `~/.agents/.skill-lock.json`. Bubble Tea owns interaction state; skill scanning, rendering, add/delete actions, and SSH key detection live in focused internal packages behind small interfaces.
+**Architecture:** Trainer rebuilds transient in-memory state by scanning every scope in the harness registry (global home locations and project locations under the launch directory), reading each scope's optional lock. Bubble Tea owns interaction state; skill scanning, rendering, add/delete actions, and SSH key detection live in focused internal packages behind small interfaces.
 
 **Tech Stack:** Go 1.26.4, golangci-lint 2.12.2, Bubble Tea v2, Bubbles, Lip Gloss v2, Glamour v2, Huh v2, Chroma.
 
@@ -30,10 +30,9 @@ This rewrite re-cuts the remaining work into **vertical slices**, each provable 
 ## Global Constraints
 
 - Do not create a Trainer-owned database, cache, or persistent index.
-- V1 scans only `~/.agents/skills/*/SKILL.md` and `~/.agents/.skill-lock.json`.
-- V1 has one scope: `Global`.
-- Add uses `npx skills add <source> -g` and does not pass agent flags.
-- Delete uses `npx skills remove -g <skill-name>` for skills in the lockfile and direct directory removal for skills only on disk.
+- Scan every scope in the harness registry: global home locations and project locations under the launch directory (`.agents`, `claude`, `codex`, `opencode`, `pi`, `cursor`). Adding a harness is one new registry entry. Only `.agents` scopes read a lock; harness scopes are always `local`.
+- Add uses `npx skills add <source>` (no scope flag) and does not pass agent flags; interactive npx prompts for skills, agents, and Project/Global scope.
+- Delete uses `npx skills remove <skill-name>` for lock-listed skills (npx prompts scope) and direct directory removal for skills only on disk.
 - Use Gruvbox Dark Hard as the default theme.
 - Do not depend on an external `gum` binary.
 - Do not embed a true PTY in v1; suspend the TUI while interactive `npx skills` runs.
@@ -49,12 +48,12 @@ Files land as their owning slice needs them rather than all up front.
 
 ```
 cmd/trainer/main.go
-internal/skills/{skill,frontmatter,lockfile,scanner}.go
+internal/skills/{skill,frontmatter,lockfile,scanner,harness}.go
 internal/ssh/keys.go
 internal/actions/{add,delete}.go
 internal/runtime/dependencies.go
 internal/render/{markdown,code}.go
-internal/app/{theme,keymap,model,update,view}.go
+internal/app/{theme,keymap,model,update,view,scope}.go
 ```
 
 ---
@@ -74,6 +73,8 @@ internal/app/{theme,keymap,model,update,view}.go
 | 8 | Search + filter + demarcated Details: search box, origin filter, full-width Details, frontmatter shown, content scrollbar, `?` help modal, `:u` update, no row caret, `Details` title | new | DONE |
 | 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | DONE |
 | Final | Full verification + manual smoke | 13 | DONE |
+| 10 | Multi-scope browsing: harness registry, symlink-aware scanner, two-level Scope pane (Global / Project sections) + counts, per-scope lock, scope-scoped list, hide empty scopes/sections | new (v1.0) | DONE |
+| 11 | Scope-aware actions: add drops `-g` (npx prompts scope); delete passes `--global` by the skill's scope; rescan all scopes | new (v1.0) | TODO |
 
 ---
 
@@ -805,6 +806,144 @@ Out of scope for v1 (by choice):
 - The Skills-pane search/filter/list logic stays as `Model` methods in
   `search.go`. A separate-type extraction was proposed earlier but carries no
   user-visible change.
+
+---
+
+## Slice 10: Multi-scope browsing — DONE
+
+**Status:** Completed 2026-07-03. Verified with `make verify` (fmt-check, vet,
+test, lint: 0 issues), a binary build, and a rendered smoke against the real
+home: `ScanAll` found 4 non-empty scopes — Global `.agents` (37 skills, 36
+remote from its lock), Global `claude`/`codex`/`pi` (all local, symlinked into
+`.agents`), with `opencode`/`cursor` and the Project section correctly omitted
+(absent / no project skills). The rendered frame shows the two-level pane with
+counts, and moving the scope selection switches the skill list. Ten RED→GREEN
+cycles: five scanner cycles (over temp-dir fixtures with real symlinks and both
+lock schemas) as pure additions, then a behavior-preserving reshape of the model
+to `[]ScanResult` + `selectedScope`, then five view/navigation cycles.
+
+### Implementation decisions & handoff notes for Slice 10 (READ before Slice 11)
+
+> Decisions not dictated by the spec/plan, review before relying on them:
+> (1) **The scope list is flat.** `Model.results []skills.ScanResult` +
+> `selectedScope int` index the flat slice; the `Global`/`Project` headers are
+> render-only grouping (`sectionOrder` + `scopeIndices`), so `j`/`k` never has to
+> skip a header row and there is no header off-by-one to get wrong.
+> (2) **`NewModel([]skills.ScanResult, opts...)`** is the honest production
+> signature (main.go passes all scopes; a one-scope machine is a one-element
+> slice). Tests use a `newTestModel(result, opts...)` helper that wraps a single
+> scope. `RescanFunc` is now `func() []skills.ScanResult`.
+> (3) **`ScanGlobal` is a thin wrapper over the new `Scan(dir, lockPath)`**, kept
+> only so the existing `internal/skills` scanner tests still describe one scope;
+> `main.go` no longer calls it.
+> (4) **Symlink fix:** `Scan` dropped the `entry.IsDir()` guard (which is false
+> for a symlink-to-dir, since `os.ReadDir` dirents come from lstat) and relies on
+> `os.Stat(SKILL.md)` following the link; a plain-file child fails that stat and
+> is skipped.
+> (5) **`refreshFromDisk` re-clamps `selectedScope`** because `ScanAll` omits
+> empty scopes, so a delete that empties a scope shifts every later index.
+> (6) **Actions are unchanged this slice** (add/delete/update still force `-g`),
+> so the existing action tests and the app stay green and shippable. Slice 11
+> makes them scope-aware.
+
+- **`internal/skills/harness.go`:** `ScopeDef{Label, Section, Dir, Lock}` with
+  `Dir`/`Lock` relative to the section base (home for Global, cwd for Project)
+  and kept as separate fields — the `.agents` lock sits beside `skills/`, the
+  project lock is `skills-lock.json` at the cwd root. `Registry()` is the plain
+  slice everything iterates; the Project section lists only `.agents`, `claude`,
+  `pi` (codex/opencode/cursor share the project `.agents/skills`). `ScanAll(home,
+  cwd)` builds paths from its two args (never `os.UserHomeDir()`, so it is
+  drivable over temp dirs), scans each scope, omits empty ones, and tags each
+  result's `Scope` with section + label + resolved path.
+- **One lock reader parses both schemas** (v3 global, v1 project) because both are
+  `{version, skills}` maps keyed by name; the schema differences (`sourceUrl`,
+  `computedHash`) are just empty or ignored.
+- **`internal/app/scope.go`:** two-level render (`renderScope`, `scopeRow` with a
+  right-aligned count and an elevated highlight band on the selected scope),
+  `moveScope` (inert with < 2 scopes; resets skill/file selection and re-syncs on
+  change), `clampScope`, `scopeIndices`.
+- **Zero-scope empty state** renders without panic (`currentSkills` returns nil,
+  the detail pane shows `No skill selected`, no scope rows).
+
+### Files created/changed in Slice 10
+- `internal/skills/harness.go` (new) — `ScopeDef`, `Registry`, `ScanAll`
+- `internal/skills/scanner.go` — `Scan(dir, lockPath)`; `ScanGlobal` wraps it
+- `internal/skills/skill.go` — `Section` type + `Scope.Section`
+- `internal/app/scope.go` — scope model, navigation, two-level render
+- `internal/app/{model,update,view,search,add}.go` — `[]ScanResult` +
+  `selectedScope`; `visibleSkills`/`refreshFromDisk` read the selected scope
+- `cmd/trainer/main.go` — resolve cwd; `ScanAll(home, cwd)`; rescan over all scopes
+- `internal/skills/scanner_test.go`, `internal/app/scope_test.go` (new) — integration
+  tests; `internal/app/helpers_test.go` (new) — `newTestModel`; existing app
+  tests repointed to `newTestModel` and their fixtures tagged with a section
+
+**Original plan for this slice (seams under test, confirmed before writing tests):**
+- `skills.Scan(dir, lockPath string) ScanResult` and `skills.ScanAll(home, cwd string) []ScanResult` — driven over real temp-dir fixtures (symlinks, real copies, several harness dirs, both lock schemas). The harness registry and per-scope lock reading are exercised *through* `ScanAll`, never shape-tested directly.
+- `Model.Update` / `Model.View` — scope-pane navigation, the scope-scoped skill list, hidden empty scopes/sections, per-scope counts.
+
+**User-observable behavior:** On launch the Scope pane shows a `Global` section and, when the current directory has project skills, a `Project` section, each listing one row per detected scope that has skills (`.agents`, `claude`, `codex`, `opencode`, `pi`, `cursor`) with a skill count. Absent or empty scopes are hidden; a section with no non-empty scopes is hidden. `j`/`k` move between scope rows while the Scope pane is focused; selecting a scope shows exactly that scope's skills. `.agents` scopes mark skills remote/local from their lock (global `~/.agents/.skill-lock.json` v3, project `<cwd>/skills-lock.json` v1); harness scopes show every skill `local`. Search and the origin filter operate within the selected scope. Add/delete/update are unchanged this slice (still force `-g`), so the app stays green and shippable.
+
+**Files:**
+- Create: `internal/skills/harness.go` — scope-definition struct, the registry, `ScanAll(home, cwd)`.
+- Modify: `internal/skills/scanner.go` — `Scan(dir, lockPath)` that follows symlinks and copies (the current `ScanGlobal` skips symlinked dirs via `entry.IsDir()`); keep `ScanGlobal` as a thin wrapper or generalize it.
+- Modify: `internal/skills/skill.go` — carry section + label on the scan result.
+- Create: `internal/app/scope.go` — two-level scope model (sections + scope leaves), navigation, render.
+- Modify: `internal/app/{model,update,view}.go` — hold `[]ScanResult` + `selectedScope`; `visibleSkills` reads the selected scope; render the two-level pane with counts.
+- Modify: `cmd/trainer/main.go` — resolve cwd; build the registry; `ScanAll(home, cwd)`; rescan closure over all scopes.
+- Test: `internal/skills/scanner_test.go`, `internal/app/scope_test.go` (+ updates to browse/layout tests that assume a single `Global` scope).
+
+**Interfaces produced:**
+- a harness/scope-definition struct + `func Registry() []...` carrying label, section, skills dir, optional lock path (skills-dir and lock-path are separate fields, not derived from each other)
+- `func Scan(dir, lockPath string) ScanResult`
+- `func ScanAll(home, cwd string) []ScanResult` — one per non-empty scope, tagged section + label
+
+**RED then GREEN order (one behavior per cycle, integration over temp-dir fixtures):**
+1. **Scanner discovers a symlinked skill dir.** Fixture: a scope dir with `foo -> ../store/foo` where `foo/SKILL.md` exists. Assert `Scan` returns `foo`. (Proves the `entry.IsDir()` symlink-skip is fixed.)
+2. **Scanner lists a real (copied) skill dir and ignores non-skill dirs.** Fixture: `bar/SKILL.md` (real) + `notaskill/` (no SKILL.md). Assert only the skills return.
+3. **`ScanAll` returns one result per non-empty scope, tagged section + label; empty/absent omitted.** Fixture home: `.agents/skills` (1), `.claude/skills` (1 symlink), `.codex/skills` (empty). Fixture cwd: `.agents/skills` (1). Assert scopes = Global/.agents, Global/claude, Project/.agents; Global/codex omitted.
+4. **`.agents` scope reads its lock; harness scope does not.** Fixture: `.agents/skills` lock marks `foo` remote; `.claude/skills/foo`. Assert Global/.agents `foo` is remote (source shown); Global/claude `foo` is local.
+5. **Project `.agents` scope reads `skills-lock.json` (v1) at the cwd root.** Fixture cwd with the v1 lock. Assert a project skill shows its `source`.
+6. **View: Global header + scope rows + counts; first scope selected; its skills listed.** Assert `View()` shows `Global`, `.agents`, a count, and the first scope's skills.
+7. **View: Project section appears only when a project scope has skills.** Two fixtures; assert presence/absence of `Project`.
+8. **Scope navigation changes the selected scope and the Skills list follows.** Focus Scope, `j`; assert the listed skills are the next scope's.
+9. **Harness scope lists every skill `local`.** Select a harness scope; assert its rows show `local`, even for a skill the `.agents` lock lists.
+10. **Empty section hidden.** cwd with no project skills → assert no `Project` section.
+
+**Notes / seams:**
+- Registry entries carry skills-dir and lock-path separately: the `.agents` lock sits beside `skills/`, but the project lock is at the cwd root (`skills-lock.json`), not inside `.agents`. Do not derive one path from the other.
+- One lock reader parses both schemas (v3 global, v1 project); the `computedHash`/`sourceUrl` differences are ignored or empty.
+- The registry is a plain slice that the scanner, scope pane, and actions all iterate, so adding a harness is one appended entry with no other change.
+- Keep assertions on substrings, never full-frame snapshots.
+
+---
+
+## Slice 11: Scope-aware actions — TODO
+
+**Status:** Not started. Target v1.0. Builds on Slice 10's scope model.
+
+**Seams under test:**
+- `actions.AddCommand`, `actions.DeleteCommand` — argv (justified unit tests: pure construction).
+- `Model.Update` / `Model.View` — the add wizard runs without `-g`; delete dispatch by the selected scope; filesystem delete over a real temp dir.
+
+**User-observable behavior:** `:a` runs `npx skills add <source>` with no `-g`, so npx's own prompts choose skills, agents, and Project/Global. `:d` on a lock-listed skill runs `npx skills remove <name>`, adding `--global` when the skill is in a Global scope (Trainer sets the flag from the skill's own scope, so the delete is deterministic); on a local/harness skill it deletes that skill's own directory entry at its scope path (removing a symlink leaves the canonical skill). `:u` is unchanged (already omits `-g`). Every action rescans all scopes.
+
+**Files:**
+- Modify: `internal/actions/add.go` — `AddCommand` drops `-g`.
+- Modify: `internal/actions/delete.go` — `DeleteCommand(name, global)` builds `remove <name>` plus `--global` when global; strategy stays lock-vs-disk, the filesystem path is the scope-specific `skill.Path`.
+- Modify: `internal/app/{add,delete}.go` — delete confirm text no longer says "global"; delete acts on the selected scope's skill; refresh covers all scopes.
+- Test: `internal/actions/{add,delete}_test.go`, `internal/app/{add,delete}_test.go`.
+
+**RED then GREEN order:**
+1. **`AddCommand` has no `-g`.** Assert argv `npx skills add <source>` exactly, and that `GIT_SSH_COMMAND` is still set when a key is given. (Replaces the existing test that asserts `-g`.)
+2. **`DeleteCommand(name, global)` argv.** Global → `npx skills remove <name> --global`; project → `npx skills remove <name>`. Assert both.
+3. **Delete of a lock-listed skill dispatches to npx-remove with the right scope flag.** Through `Update` with an injected runner; assert the command carries `--global` iff the skill's scope is Global, and that refresh runs.
+4. **Delete of a local/harness skill removes its scope-specific directory.** Real temp-dir fixture: a skill under a harness scope path; confirm; assert the entry at `skill.Path` is gone and all scopes rescanned.
+5. **Confirm text no longer claims "global".** Assert the confirm modal text.
+6. **After each action, refresh repopulates every scope.** Assert the scope list/counts reflect the rescan.
+
+**Notes:**
+- `UpdateCommand` already omits `-g`; only the refresh needs to cover all scopes.
+- The wizard gains no scope step — npx prompts for it. Only the forced `-g` is removed.
 
 ---
 

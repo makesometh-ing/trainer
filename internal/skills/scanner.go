@@ -6,7 +6,20 @@ import (
 	"sort"
 )
 
+// ScanGlobal scans a single skills directory and reads its lock, tagging the
+// result as the Global .agents scope. It is a thin wrapper over Scan.
 func ScanGlobal(root string, lockPath string) ScanResult {
+	result := Scan(root, lockPath)
+	result.Scope = Scope{Name: ".agents", Section: SectionGlobal, Path: root}
+	return result
+}
+
+// Scan reads a single skills directory one level deep and merges its optional
+// lock. Each child that resolves to a directory containing SKILL.md is a skill,
+// whether it is a real directory or a symlink: os.ReadDir reports a symlink via
+// lstat, so the type is not checked here; os.Stat on SKILL.md follows the link,
+// and a plain file child fails that stat and is skipped.
+func Scan(root string, lockPath string) ScanResult {
 	result := ScanResult{
 		Scope: Scope{Name: "Global", Path: root},
 	}
@@ -22,9 +35,6 @@ func ScanGlobal(root string, lockPath string) ScanResult {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
 		dir := filepath.Join(root, entry.Name())
 		skillPath := filepath.Join(dir, "SKILL.md")
 		if _, err := os.Stat(skillPath); err != nil {

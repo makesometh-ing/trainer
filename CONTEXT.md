@@ -21,8 +21,16 @@ An installed skill available outside a single project workspace.
 _Avoid_: user skill, system skill
 
 **Scope**:
-A top-level grouping of installed skills by where they are discovered, such as global, a specific agent, or a project path.
-_Avoid_: tag, label, category
+A single detected skill location that Trainer scans, shown as one selectable leaf in the Scope pane, grouped under a Global or Project section. Selecting a scope shows exactly that location's skills. Examples: the global `.agents` store, a project's claude skills.
+_Avoid_: tag, label, category, folder
+
+**Harness**:
+An AI coding agent whose skills Trainer detects in that agent's own directory, such as claude, codex, opencode, pi, or cursor.
+_Avoid_: tool, IDE, editor, integration
+
+**`.agents` scope**:
+The harness-independent skill store that agents share, labelled `.agents`, as opposed to a single harness's own store. It is the canonical location other harnesses symlink into, and the only scope with a skill lock; harness scopes have none.
+_Avoid_: generic scope, default scope, base scope
 
 **Skill Source**:
 The origin a skill was installed from, such as a GitHub repository, Git URL, registry source, or local path.

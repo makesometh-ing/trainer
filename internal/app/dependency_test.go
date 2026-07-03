@@ -10,7 +10,7 @@ import (
 )
 
 func TestAddDisabledShowsExplanatoryMessage(t *testing.T) {
-	var m tea.Model = NewModel(browseResult(), WithAddEnabled(false))
+	var m tea.Model = newTestModel(browseResult(), WithAddEnabled(false))
 
 	m = press(m, ":")
 	m = press(m, "a")
@@ -22,14 +22,14 @@ func TestAddDisabledShowsExplanatoryMessage(t *testing.T) {
 }
 
 func TestAddEnabledByDefault(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 	if !m.AddEnabled() {
 		t.Error("expected add to be enabled by default")
 	}
 }
 
 func TestCapabilitiesReflectDependencyFlags(t *testing.T) {
-	m := NewModel(skills.ScanResult{}, WithAddEnabled(false), WithLockedDeleteEnabled(false))
+	m := newTestModel(skills.ScanResult{}, WithAddEnabled(false), WithLockedDeleteEnabled(false))
 	if m.AddEnabled() {
 		t.Error("expected add disabled")
 	}

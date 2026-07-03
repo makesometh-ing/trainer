@@ -12,7 +12,7 @@ import (
 
 func TestSearchBoxDoesNotOverflowFrame(t *testing.T) {
 	const w, h = 120, 40
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = resize(m, w, h)
 	m = press(m, "/")
 	m = typeString(m, strings.Repeat("x", 200))
@@ -39,7 +39,7 @@ func pressSpace(m tea.Model) tea.Model {
 
 func mixedResult() skills.ScanResult {
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: "/root"},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: []skills.Skill{
 			{Name: "alpha", Path: "/root/alpha", Lock: &skills.LockEntry{Source: "owner/alpha"}},
 			{Name: "avocado", Path: "/root/avocado"},
@@ -49,7 +49,7 @@ func mixedResult() skills.ScanResult {
 }
 
 func TestSearchNarrowsList(t *testing.T) {
-	var m tea.Model = NewModel(browseResult()) // alpha (locked), bravo (local)
+	var m tea.Model = newTestModel(browseResult()) // alpha (locked), bravo (local)
 	m = press(m, "/")
 	m = typeString(m, "br")
 
@@ -63,7 +63,7 @@ func TestSearchNarrowsList(t *testing.T) {
 }
 
 func TestSearchEnterKeepsResults(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = press(m, "/")
 	m = typeString(m, "br")
 	m = press(m, "enter")
@@ -81,7 +81,7 @@ func TestSearchEnterKeepsResults(t *testing.T) {
 }
 
 func TestSearchEscClearsAndRestores(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = press(m, "/")
 	m = typeString(m, "br")
 	m = press(m, "esc")
@@ -93,7 +93,7 @@ func TestSearchEscClearsAndRestores(t *testing.T) {
 }
 
 func TestFilterRemoteShowsOnlyLocked(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = press(m, "f") // focus filter (cursor at All)
 	m = press(m, "l") // cursor -> Remote
 	m = pressSpace(m) // apply Remote
@@ -108,7 +108,7 @@ func TestFilterRemoteShowsOnlyLocked(t *testing.T) {
 }
 
 func TestFilterLocalAndClear(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = press(m, "f")
 	m = press(m, "l") // Remote
 	m = press(m, "l") // Local
@@ -130,7 +130,7 @@ func TestFilterLocalAndClear(t *testing.T) {
 }
 
 func TestSearchAndFilterCombine(t *testing.T) {
-	var m tea.Model = NewModel(mixedResult())
+	var m tea.Model = newTestModel(mixedResult())
 	m = press(m, "f")
 	m = press(m, "l") // Remote
 	m = pressSpace(m)
@@ -148,7 +148,7 @@ func TestSearchAndFilterCombine(t *testing.T) {
 }
 
 func TestResetInSkillsPaneClearsSearchAndFilter(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 	m = press(m, "f")
 	m = press(m, "l")
 	m = pressSpace(m) // Remote
@@ -172,7 +172,7 @@ func TestResetInSkillsPaneClearsSearchAndFilter(t *testing.T) {
 }
 
 func TestRInDetailPaneSelectsReferences(t *testing.T) {
-	var m tea.Model = NewModel(twoReferencesResult(t))
+	var m tea.Model = newTestModel(twoReferencesResult(t))
 	m = sized(m, 120, 40)
 	m = press(m, "3") // focus Details
 	m = press(m, "r") // References tab, not reset
@@ -185,7 +185,7 @@ func TestRInDetailPaneSelectsReferences(t *testing.T) {
 func TestSelectionStaysWithinFilteredList(t *testing.T) {
 	// mixedResult has one local skill (avocado); navigating the filtered list
 	// must never select a skill outside it.
-	var m tea.Model = NewModel(mixedResult())
+	var m tea.Model = newTestModel(mixedResult())
 	m = press(m, "j") // move down the full list first
 	m = press(m, "j")
 

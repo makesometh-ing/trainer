@@ -127,9 +127,10 @@ func (m Model) refreshFromDisk() Model {
 	if m.rescan == nil {
 		return m
 	}
-	result := m.rescan()
-	m.skills = result.Skills
-	m.scope = result.Scope
+	m.results = m.rescan()
+	// A rescan can drop a scope that a delete emptied (ScanAll omits empty
+	// scopes), shifting the indices, so clamp the selected scope back into range.
+	m.clampScope()
 	m.clampSelection()
 	m.fileSel = 0
 	m.subfocus = subfocusList

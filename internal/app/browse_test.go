@@ -11,7 +11,7 @@ import (
 
 func browseResult() skills.ScanResult {
 	return skills.ScanResult{
-		Scope: skills.Scope{Name: "Global", Path: "/root"},
+		Scope: skills.Scope{Name: ".agents", Section: skills.SectionGlobal, Path: "/root"},
 		Skills: []skills.Skill{
 			{
 				Name:        "alpha",
@@ -38,7 +38,7 @@ func view(m tea.Model) string {
 }
 
 func TestInitialViewShowsScopeAndSkills(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	out := view(m)
 
@@ -54,7 +54,7 @@ func TestInitialViewShowsScopeAndSkills(t *testing.T) {
 }
 
 func TestSelectionMovesWithJK(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	m = press(m, "j")
 	out := view(m)
@@ -73,7 +73,7 @@ func TestSelectionMovesWithJK(t *testing.T) {
 }
 
 func TestRowShowsSourceOrLocalLabel(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	out := view(m)
 	if !strings.Contains(out, "owner/alpha") {
@@ -97,7 +97,7 @@ func lineContaining(s, substr string) string {
 }
 
 func TestSelectedRowIsStyledDifferently(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+	var m tea.Model = newTestModel(browseResult())
 
 	whenSelected := lineContaining(view(m), "alpha")
 
@@ -113,7 +113,7 @@ func TestSelectedRowIsStyledDifferently(t *testing.T) {
 }
 
 func TestSelectedRowHasNoCaret(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	if strings.Contains(plain(view(m)), "> alpha") {
 		t.Errorf("expected no caret before the selected skill name, got:\n%s", plain(view(m)))
@@ -121,7 +121,7 @@ func TestSelectedRowHasNoCaret(t *testing.T) {
 }
 
 func TestMetaBlockOmitsDescription(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	if strings.Contains(plain(view(m)), "First skill") {
 		t.Errorf("expected the description to be omitted from the Details meta block, got:\n%s", plain(view(m)))
@@ -129,7 +129,7 @@ func TestMetaBlockOmitsDescription(t *testing.T) {
 }
 
 func TestQuitReturnsQuitCmd(t *testing.T) {
-	m := NewModel(browseResult())
+	m := newTestModel(browseResult())
 
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {

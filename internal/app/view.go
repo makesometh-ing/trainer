@@ -108,12 +108,6 @@ func (m Model) renderStatus() string {
 		Render(m.status)
 }
 
-func (m Model) renderScope() string {
-	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(1) Scope")
-	item := lipgloss.NewStyle().Foreground(m.theme.Fg).Render("Global")
-	return m.pane(paneScope, m.scopeWidth(), m.paneHeight(), strings.Join([]string{title, item}, "\n"))
-}
-
 func (m Model) renderSkillList() string {
 	title := lipgloss.NewStyle().Foreground(m.theme.Accent).Render("(2) Skills")
 	header := strings.Join([]string{
