@@ -5,6 +5,22 @@ import (
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// While the add wizard is open it owns every message: Huh delivers group
+	// transitions and completion as non-key messages produced by its own cmds,
+	// so routing only key presses to it would strand those transitions.
+	if m.wizard != nil {
+		// The wizard is a fixed-width modal. A window size is consumed for the
+		// app's own layout but not forwarded to the form: Huh would size every
+		// group to the tallest group's height, padding the short source step up
+		// to the SSH step and making the modal jump after it loads.
+		if ws, ok := msg.(tea.WindowSizeMsg); ok {
+			m.width = ws.Width
+			m.height = ws.Height
+			m.syncSize()
+			return m, nil
+		}
+		return m.updateWizard(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -29,9 +45,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.help {
 		return m.handleHelpKey(msg)
-	}
-	if m.wizard != nil {
-		return m.handleWizardKey(msg)
 	}
 	if m.confirm != nil {
 		return m.handleConfirmKey(msg)
@@ -239,7 +252,8 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.status = "Adding skills is disabled: npx is not available."
 			return m, nil
 		}
-		m.wizard = newAddWizard()
+		m.wizard = newAddWizard(m.sshKeys, m.theme)
+		return m, m.wizard.form.Init()
 	case "d":
 		m.palette = false
 		return m.startDelete()

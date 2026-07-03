@@ -1,99 +1,113 @@
 package app
 
 import (
+	"errors"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	huh "charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/makesometh-ing/trainer/internal/actions"
 	"github.com/makesometh-ing/trainer/internal/ssh"
 )
 
-type wizardStep int
+// wizardFormWidth is the inner width the add form renders at inside its modal.
+const wizardFormWidth = 46
 
-const (
-	stepSource wizardStep = iota
-	stepSSHKey
-)
+var errEmptySource = errors.New("enter a skill source")
 
+// addWizard is the add-skill form: a source input and, for SSH git sources with
+// a choice of keys, an SSH-key select. It is a huh.Form embedded in the model so
+// the form drives entirely through Model.Update.
 type addWizard struct {
-	step   wizardStep
-	source textinput.Model
-
+	form   *huh.Form
+	source *string
+	key    *string
 	keys   []ssh.KeyPair
-	keySel int
 }
 
-func newAddWizard() *addWizard {
-	src := textinput.New()
-	src.Prompt = "source: "
-	src.Placeholder = "owner/repo"
-	src.Focus()
-	return &addWizard{
-		step:   stepSource,
-		source: src,
+func newAddWizard(keys []ssh.KeyPair, theme Theme) *addWizard {
+	source, key := new(string), new(string)
+
+	opts := make([]huh.Option[string], 0, len(keys))
+	for _, k := range keys {
+		opts = append(opts, huh.NewOption(k.Name, k.PrivatePath))
 	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Key("source").Title("Skill source").
+				Placeholder("owner/repo").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errEmptySource
+					}
+					return nil
+				}).
+				Value(source),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().Key("sshkey").Title("SSH key").
+				Options(opts...).
+				Value(key),
+		).WithHideFunc(func() bool {
+			return !sshStepApplies(*source, keys)
+		}),
+	).WithShowHelp(false).WithWidth(wizardFormWidth).WithTheme(gruvboxHuhTheme(theme))
+
+	return &addWizard{form: form, source: source, key: key, keys: keys}
 }
 
-func (m Model) handleWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc":
+// sshStepApplies reports whether the SSH-key select should be shown: the source
+// is an SSH git source and there is more than one key to choose between.
+func sshStepApplies(source string, keys []ssh.KeyPair) bool {
+	return ssh.IsSSHGitSource(source) && len(keys) >= 2
+}
+
+// updateWizard forwards a message to the embedded form and reacts to its state.
+// The form owns every message while open because Huh delivers group transitions
+// and completion as messages produced by its own cmds, not synchronously.
+func (m Model) updateWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// ctrl+c and esc are handled before the form sees them: Huh binds quit to
+	// ctrl+c only (so esc would otherwise do nothing), and the app's convention
+	// is that esc cancels a modal.
+	if k, ok := msg.(tea.KeyPressMsg); ok {
+		switch k.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			m.wizard = nil
+			return m, nil
+		}
+	}
+
+	form, cmd := m.wizard.form.Update(msg)
+	if f, ok := form.(*huh.Form); ok {
+		m.wizard.form = f
+	}
+
+	switch m.wizard.form.State {
+	case huh.StateCompleted:
+		return m.finishWizard()
+	case huh.StateAborted:
 		m.wizard = nil
 		return m, nil
-	case "enter":
-		return m.advanceWizard()
 	}
-	if m.wizard.step == stepSSHKey {
-		switch msg.String() {
-		case "j", "down":
-			m.wizard.moveKey(1)
-		case "k", "up":
-			m.wizard.moveKey(-1)
-		}
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.wizard.source, cmd = m.wizard.source.Update(msg)
 	return m, cmd
 }
 
-func (w *addWizard) moveKey(delta int) {
-	next := w.keySel + delta
-	if next < 0 {
-		next = 0
+// finishWizard runs the add for the completed form. The SSH key is read only
+// when the SSH step applied; a hidden Select still defaults its bound value to
+// the first option, so reading it unconditionally would attach a key to a
+// non-SSH source.
+func (m Model) finishWizard() (tea.Model, tea.Cmd) {
+	source := strings.TrimSpace(*m.wizard.source)
+	keyPath := ""
+	if sshStepApplies(source, m.wizard.keys) {
+		keyPath = *m.wizard.key
 	}
-	if next >= len(w.keys) {
-		next = len(w.keys) - 1
-	}
-	w.keySel = next
-}
-
-func (m Model) advanceWizard() (tea.Model, tea.Cmd) {
-	switch m.wizard.step {
-	case stepSource:
-		source := strings.TrimSpace(m.wizard.source.Value())
-		if source == "" {
-			return m, nil
-		}
-		if ssh.IsSSHGitSource(source) && len(m.sshKeys) >= 2 {
-			m.wizard.step = stepSSHKey
-			m.wizard.keys = m.sshKeys
-			return m, nil
-		}
-		return m.runAdd(source, "")
-	case stepSSHKey:
-		source := strings.TrimSpace(m.wizard.source.Value())
-		keyPath := ""
-		if m.wizard.keySel >= 0 && m.wizard.keySel < len(m.wizard.keys) {
-			keyPath = m.wizard.keys[m.wizard.keySel].PrivatePath
-		}
-		return m.runAdd(source, keyPath)
-	}
-	return m, nil
+	return m.runAdd(source, keyPath)
 }
 
 // addFinishedMsg signals the add command completed and the model should rescan.
@@ -130,23 +144,16 @@ func (m Model) renderWizard() string {
 		Bold(true).
 		Render("Add skill")
 
-	if m.wizard.step == stepSSHKey {
-		lines := []string{title, "Select SSH key:"}
-		for i, k := range m.wizard.keys {
-			prefix := "  "
-			if i == m.wizard.keySel {
-				prefix = "> "
-			}
-			lines = append(lines, prefix+k.Name)
-		}
-		lines = append(lines,
-			lipgloss.NewStyle().Foreground(m.theme.Muted).Render("enter confirm  esc cancel"))
-		return lipgloss.JoinVertical(lipgloss.Left, lines...)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left,
+	body := lipgloss.JoinVertical(lipgloss.Left,
 		title,
-		m.wizard.source.View(),
+		"",
+		m.wizard.form.View(),
 		lipgloss.NewStyle().Foreground(m.theme.Muted).Render("enter confirm  esc cancel"),
 	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.ActiveBorder).
+		Padding(0, 2).
+		Render(body)
 }

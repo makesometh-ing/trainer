@@ -72,7 +72,7 @@ internal/app/{theme,keymap,model,update,view}.go
 | 6 | Layout polish: shortcut labels on panes/tabs, full-screen reflow, too-small message | new | DONE |
 | 7 | Detail rendering & layout polish (post-smoke): frontmatter strip, Gruvbox Glamour theme, pane fit/windowing, row highlight, `h`/`l`/`enter` nav, subfocus + scroll indicators, tab keys `i/r/s/a` | new | DONE |
 | 8 | Search + filter + demarcated Details: search box, origin filter, full-width Details, frontmatter shown, content scrollbar, `?` help modal, `:u` update, no row caret, `Details` title | new | DONE |
-| 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | NOT DONE |
+| 9 | Rebuild the add-skill wizard on Huh v2 (remove the hand-rolled wizard) | new | DONE |
 | Final | Full verification + manual smoke | 13 | NOT DONE |
 
 ---
@@ -659,22 +659,79 @@ Help modal and update command:
   visible set changes, keep the selection on a listed skill and follow it in the
   Details pane.
 
-## Slice 9: Rebuild the add-skill wizard on Huh v2 — NOT DONE
+## Slice 9: Rebuild the add-skill wizard on Huh v2 — DONE
 
-Recorded from a decision made while planning Slice 8. The add-skill wizard is
-currently hand-built on a Bubbles `textinput` and a plain key-driven SSH-key
-list; the spec's stack had named Huh v2 for forms but it was never added and no
-code uses it. This slice replaces the hand-built wizard with Huh v2.
+**Status:** Completed 2026-07-03. Verified with `make verify` (fmt-check, vet,
+test, lint: 0 issues), a binary build, and rendered smokes of the source and
+SSH-key steps at 110×26 (a centered rounded-border modal over the three panes,
+themed to the Gruvbox palette). Thirteen RED→GREEN cycles driven through
+`Model.Update`/`View`.
 
-**Scope:** add the Huh v2 dependency; rebuild the source-input and SSH-key-select
-steps as a Huh form; keep the existing suspend-run-refresh flow and the injected
-runner so tests never shell out to `npx`. First confirm Huh v2 embeds cleanly in
-the Bubble Tea v2 model and is drivable through `Model.Update` with real key
-messages (the reason given for the original hand-roll); if it is not, record why
-before proceeding rather than silently hand-rolling again.
+**User-observable behavior:** `:a` opens the add wizard as a **centered modal
+overlay**, styled like the command palette (the earlier hand-rolled wizard was
+appended below the full-height body and rendered off the bottom of the screen).
+Step 1 is a source input; an empty source is rejected and stays put. For SSH git
+sources with two or more usable keys, step 2 is an SSH-key select; other sources
+skip it. `enter` confirms, `esc` cancels the modal, `ctrl+c` quits the app. On
+completion Trainer runs `npx skills add <source> -g` (with `GIT_SSH_COMMAND` when
+an SSH key was chosen) via the injected runner, then rescans.
 
-**Kept out of Slice 8** so the search/filter/Details work stays a focused,
-shippable slice and the working add flow is not destabilised mid-change.
+### Verification of the original hand-roll rationale (required by this slice)
+
+The prior handoff note claimed Huh forms are not drivable through `Model.Update`
+and "own their own event loop." That is **false**, proven by a spike and a
+throwaway prototype before any slice code was written:
+
+- A `huh.Form` is a `tea.Model`; embedding it and forwarding messages to
+  `form.Update` drives it. The form transitions groups and completes correctly.
+- The real requirement the note missed: the parent must **propagate the
+  `tea.Cmd`** Huh returns. Group transitions and completion arrive as messages
+  produced by Huh's own cmds (`nextGroupMsg`), not synchronously inside one
+  `Update`. A driver that discards the cmd never transitions — which is exactly
+  what the existing `press` test helper does.
+
+### Implementation decisions & handoff notes for Slice 9
+
+- **The wizard is a single `huh.Form`** (`internal/app/add.go`): a source
+  `huh.Input` group plus an SSH-key `huh.Select` group whose `WithHideFunc`
+  reads the bound source and hides the step unless `IsSSHGitSource(source) &&
+  len(keys) >= 2`. Empty-source rejection is a Huh `Validate`.
+- **Message routing:** while the wizard is open, `Model.Update` forwards **every**
+  message to `updateWizard` (not just key presses), because Huh's transition and
+  completion messages are non-key. `ctrl+c` (quit) and `esc` (cancel) are gated
+  before the form sees them — Huh binds quit to `ctrl+c` only, so `esc` would
+  otherwise do nothing. A `WindowSizeMsg` is consumed for the app's own layout
+  but **not** forwarded to the form: Huh sizes every group to the tallest
+  group's height, which padded the short source step up to the SSH step and made
+  the modal jump after `form.Init` requested the size. The wizard is a
+  fixed-width modal, so it does not need the terminal size.
+- **Gotcha:** a *hidden* conditional `Select` still defaults its bound value to
+  its first option. So the SSH key is read only when the SSH step applied
+  (`sshStepApplies`), or a non-SSH add would attach the first key. Covered by
+  `TestNonSSHSourceAttachesNoKey`.
+- **Rendering:** `renderWizard` wraps `form.View()` in the same rounded-border
+  modal as the palette and is drawn via `overlayCenter`.
+- **Theme:** the form is themed to the Gruvbox palette
+  (`gruvboxHuhTheme` in `huhtheme.go`) so it matches the rest of the UI; Huh's
+  default theme is indigo titles and a fuchsia select selector. The theme is
+  built on `huh.ThemeBase` with only the accent-bearing styles overridden from
+  the app `Theme`.
+- **Test harness (`add_test.go`):** a dedicated wizard driver sends realistic
+  keys (`{Text,Code}` for runes, `{Code}` for named keys) and pumps the returned
+  cmd with a small bound (the cursor-blink tick would otherwise recur). Typing
+  uses single `Update`s (characters insert synchronously); `enter`/navigation
+  pump. The shared `press` helper is unchanged — it cannot drive Huh, and
+  rewriting it would touch every test file for no gain.
+
+### Files changed in Slice 9
+- `internal/app/add.go` — rebuilt `addWizard` on `huh.Form`; `updateWizard`,
+  `finishWizard`, `sshStepApplies`; `renderWizard` as a bordered modal
+- `internal/app/huhtheme.go` (new) — `gruvboxHuhTheme` maps the app palette to a
+  `huh.Theme`
+- `internal/app/update.go` — wizard message routing; `:a` returns `form.Init()`
+- `internal/app/view.go` — wizard drawn via `overlayCenter` (was appended below)
+- `internal/app/add_test.go` — wizard-driving harness + 12 integration cycles
+- `go.mod`/`go.sum` — `charm.land/huh/v2 v2.0.3` as a direct dependency
 
 ## Final slice: Full verification — NOT DONE
 

@@ -25,7 +25,7 @@ func (m Model) View() tea.View {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, scope, list, detail)
 	if m.wizard != nil {
-		body = lipgloss.JoinVertical(lipgloss.Left, body, m.renderWizard())
+		body = m.overlayCenter(body, m.renderWizard())
 	}
 	if m.palette {
 		body = m.overlayCenter(body, m.renderPalette())

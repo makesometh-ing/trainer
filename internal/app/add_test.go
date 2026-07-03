@@ -7,66 +7,230 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/makesometh-ing/trainer/internal/skills"
 	"github.com/makesometh-ing/trainer/internal/ssh"
 )
 
-func TestAddWizardOpensSourcePrompt(t *testing.T) {
-	var m tea.Model = NewModel(browseResult())
+// --- wizard test harness ---------------------------------------------------
+//
+// The add wizard is a huh.Form embedded in the model. Huh reads real key codes
+// and delivers group transitions and completion as messages produced by cmds,
+// so the plain `press` helper (which sends Text-only keys and discards cmds)
+// cannot drive it. These helpers send realistic keys and pump the returned cmd.
 
-	m = press(m, ":")
-	m = press(m, "a")
-
-	out := view(m)
-	if !strings.Contains(out, "Add skill") {
-		t.Errorf("expected add wizard title, got:\n%s", out)
-	}
-	if !strings.Contains(out, "source") {
-		t.Errorf("expected source prompt, got:\n%s", out)
-	}
+// runeKey is a printable keystroke as Bubble Tea delivers it: Text and Code set.
+func runeKey(r rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Text: string(r), Code: r})
 }
 
-func typeSource(m tea.Model, source string) tea.Model {
-	for _, r := range source {
-		m = press(m, string(r))
+// namedKey is a non-printable key (enter, tab, arrows) identified by its Code.
+func namedKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
+// pump runs the returned cmd back into the model a bounded number of times so
+// Huh's transition/completion messages are delivered. Bounded because the
+// textinput cursor-blink tick would otherwise recur forever.
+func pump(m tea.Model, cmd tea.Cmd) tea.Model {
+	for i := 0; i < 3 && cmd != nil; i++ {
+		m, cmd = m.Update(cmd())
 	}
 	return m
 }
 
-func TestSSHStepShownForSSHSourceWithMultipleKeys(t *testing.T) {
-	keys := []ssh.KeyPair{
+// wtype types text into the focused field one rune at a time. Characters insert
+// synchronously inside Update, so the blink cmd can be discarded.
+func wtype(m tea.Model, s string) tea.Model {
+	for _, r := range s {
+		m, _ = m.Update(runeKey(r))
+	}
+	return m
+}
+
+// wsend sends one key and pumps its cmd (used for enter/navigation that trigger
+// group transitions or completion).
+func wsend(m tea.Model, k tea.KeyPressMsg) tea.Model {
+	next, cmd := m.Update(k)
+	return pump(next, cmd)
+}
+
+// openWizard opens the add wizard via the command palette, pumping the form's
+// Init cmd so the first field is focused and ready for input.
+func openWizard(m tea.Model) tea.Model {
+	m, _ = m.Update(runeKey(':'))
+	next, cmd := m.Update(runeKey('a'))
+	return pump(next, cmd)
+}
+
+func twoSSHKeys() []ssh.KeyPair {
+	return []ssh.KeyPair{
 		{Name: "id_ed25519", PrivatePath: "/ssh/id_ed25519"},
 		{Name: "id_rsa", PrivatePath: "/ssh/id_rsa"},
 	}
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(keys))
+}
 
-	m = press(m, ":")
-	m = press(m, "a")
-	m = typeSource(m, "git@github.com:owner/repo.git")
-	m = press(m, "enter")
+// --- cycles ----------------------------------------------------------------
+
+func TestAddWizardOpensSourcePrompt(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+
+	m = openWizard(m)
+
+	out := view(m)
+	if !strings.Contains(out, "Add skill") {
+		t.Errorf("expected the wizard modal title, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Skill source") {
+		t.Errorf("expected the huh source field, got:\n%s", out)
+	}
+}
+
+func TestEmptySourceDoesNotComplete(t *testing.T) {
+	ran := false
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		ran = true
+		return func() tea.Msg { return done(nil) }
+	}
+	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+
+	m = openWizard(m)
+	m = wsend(m, namedKey(tea.KeyEnter)) // enter with no source typed
+
+	if ran {
+		t.Error("expected an empty source not to run the add command")
+	}
+	if !strings.Contains(view(m), "Skill source") {
+		t.Errorf("expected to stay on the source step for empty input, got:\n%s", view(m))
+	}
+}
+
+func TestSSHStepShownForSSHSourceWithMultipleKeys(t *testing.T) {
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
+
+	m = openWizard(m)
+	m = wtype(m, "git@github.com:owner/repo.git")
+	m = wsend(m, namedKey(tea.KeyEnter))
 
 	out := view(m)
 	if !strings.Contains(out, "id_ed25519") || !strings.Contains(out, "id_rsa") {
-		t.Errorf("expected SSH key choices, got:\n%s", out)
+		t.Errorf("expected the SSH key choices after an SSH source, got:\n%s", out)
 	}
 }
 
 func TestSSHStepSkippedForNonSSHSource(t *testing.T) {
-	keys := []ssh.KeyPair{
-		{Name: "id_ed25519", PrivatePath: "/ssh/id_ed25519"},
-		{Name: "id_rsa", PrivatePath: "/ssh/id_rsa"},
+	ran := false
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		ran = true
+		return func() tea.Msg { return done(nil) }
 	}
-	var m tea.Model = NewModel(browseResult(), WithSSHKeys(keys))
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
 
-	m = press(m, ":")
-	m = press(m, "a")
-	m = typeSource(m, "owner/repo")
-	m = press(m, "enter")
+	m = openWizard(m)
+	m = wtype(m, "owner/repo")
+	m = wsend(m, namedKey(tea.KeyEnter))
 
-	out := view(m)
-	if strings.Contains(out, "id_ed25519") {
-		t.Errorf("did not expect SSH key choices for non-SSH source, got:\n%s", out)
+	if !ran {
+		t.Error("expected a non-SSH source to complete on the first enter (no SSH step)")
+	}
+	if strings.Contains(view(m), "id_ed25519") {
+		t.Errorf("did not expect SSH key choices for a non-SSH source, got:\n%s", view(m))
+	}
+}
+
+// wtap sends a key without pumping (in-field navigation is synchronous).
+func wtap(m tea.Model, k tea.KeyPressMsg) tea.Model {
+	next, _ := m.Update(k)
+	return next
+}
+
+func envHasKey(env []string, keyPath string) bool {
+	for _, e := range env {
+		if strings.Contains(e, "GIT_SSH_COMMAND") && strings.Contains(e, keyPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func envHasAnySSHCommand(env []string) bool {
+	for _, e := range env {
+		if strings.Contains(e, "GIT_SSH_COMMAND") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSSHKeySelectionPassesChosenKey(t *testing.T) {
+	var env []string
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		env = cmd.Env
+		return func() tea.Msg { return done(nil) }
+	}
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
+
+	m = openWizard(m)
+	m = wtype(m, "git@github.com:owner/repo.git")
+	m = wsend(m, namedKey(tea.KeyEnter)) // advance to SSH-key select
+	m = wtap(m, namedKey(tea.KeyDown))   // move to the second key (id_rsa)
+	wsend(m, namedKey(tea.KeyEnter))     // confirm selection -> complete (runner captures env)
+
+	if !envHasKey(env, "/ssh/id_rsa") {
+		t.Errorf("expected GIT_SSH_COMMAND with the chosen key /ssh/id_rsa, env=%v", env)
+	}
+}
+
+// Gotcha #4: a hidden Select still defaults its bound value to the first option,
+// so a non-SSH add must attach no key at all.
+func TestNonSSHSourceAttachesNoKey(t *testing.T) {
+	var env []string
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		env = cmd.Env
+		return func() tea.Msg { return done(nil) }
+	}
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()), WithAddRunner(runner))
+
+	m = openWizard(m)
+	m = wtype(m, "owner/repo")
+	wsend(m, namedKey(tea.KeyEnter)) // completes; runner captures env
+
+	if envHasAnySSHCommand(env) {
+		t.Errorf("expected no GIT_SSH_COMMAND for a non-SSH source, env=%v", env)
+	}
+}
+
+func TestCtrlCQuitsFromWizard(t *testing.T) {
+	var m tea.Model = NewModel(browseResult())
+	m = openWizard(m)
+
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Mod: tea.ModCtrl, Code: 'c'}))
+	if cmd == nil {
+		t.Fatal("expected ctrl+c to return a command while the wizard is open")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("expected ctrl+c to quit from the wizard")
+	}
+}
+
+func TestEscClosesWizardWithoutAdding(t *testing.T) {
+	ran := false
+	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		ran = true
+		return func() tea.Msg { return done(nil) }
+	}
+	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+
+	m = openWizard(m)
+	m = wtype(m, "owner/repo")
+	m = wsend(m, namedKey(tea.KeyEsc))
+
+	if ran {
+		t.Error("expected esc to cancel without running the add command")
+	}
+	if strings.Contains(view(m), "Skill source") {
+		t.Errorf("expected esc to close the wizard, got:\n%s", view(m))
 	}
 }
 
@@ -77,43 +241,66 @@ func TestAddDisabledDoesNotOpenWizard(t *testing.T) {
 	m = press(m, "a")
 
 	out := view(m)
-	if strings.Contains(out, "Add skill") {
-		t.Errorf("expected no add wizard when add is disabled, got:\n%s", out)
+	if strings.Contains(out, "Skill source") {
+		t.Errorf("expected no wizard when add is disabled, got:\n%s", out)
+	}
+	if !strings.Contains(out, "disabled") {
+		t.Errorf("expected an explanatory disabled message, got:\n%s", out)
 	}
 }
 
-func TestCtrlCQuitsFromWizard(t *testing.T) {
+// Regression guard for the off-screen wizard: it must render as a centered
+// overlay within the terminal, not appended below the already-full-height body.
+func TestWizardOverlayFitsWithinTerminal(t *testing.T) {
+	const w, h = 100, 30
 	var m tea.Model = NewModel(browseResult())
+	m, _ = m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	m = openWizard(m)
 
-	m = press(m, ":")
-	m = press(m, "a")
-
-	_, cmd := m.Update(tea.KeyPressMsg{Text: "ctrl+c"})
-	if cmd == nil {
-		t.Fatal("expected ctrl+c to return a command while wizard is open")
+	out := view(m)
+	if !strings.Contains(out, "Skill source") {
+		t.Fatalf("expected the wizard to be open, got:\n%s", out)
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Error("expected ctrl+c to quit from the wizard")
+	if gotH := lipgloss.Height(out); gotH > h {
+		t.Errorf("wizard overlay height = %d, exceeds terminal height %d", gotH, h)
+	}
+	if gotW := lipgloss.Width(out); gotW > w {
+		t.Errorf("wizard overlay width = %d, exceeds terminal width %d", gotW, w)
 	}
 }
 
-func TestEmptySourceDoesNotAdvance(t *testing.T) {
-	ran := false
-	runner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
-		ran = true
-		return func() tea.Msg { return done(nil) }
-	}
-	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner))
+// The wizard form is themed to match the app's Gruvbox palette, like the
+// command palette. Huh's default theme colors the select selector fuchsia
+// (#F780E2 = 247;128;226); the Gruvbox theme must replace it.
+func TestWizardUsesGruvboxTheme(t *testing.T) {
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
 
-	m = press(m, ":")
-	m = press(m, "a")
-	m = press(m, "enter")
+	m = openWizard(m)
+	m = wtype(m, "git@github.com:owner/repo.git")
+	m = wsend(m, namedKey(tea.KeyEnter)) // advance to the SSH-key select
 
-	if ran {
-		t.Error("expected empty source not to run the add command")
+	out := view(m)
+	if strings.Contains(out, "247;128;226") {
+		t.Errorf("expected the Gruvbox theme to override huh's fuchsia selector, got:\n%s", out)
 	}
-	if !strings.Contains(view(m), "Add skill") {
-		t.Error("expected to stay on the source step for empty input")
+}
+
+// The wizard is a fixed-size modal. Huh sizes every group to the tallest
+// group's height when it receives a window size, which would pad the short
+// source step up to the taller SSH step and make the modal jump after load
+// (form.Init requests the size). The modal height must not change when a window
+// size arrives while it is open.
+func TestWizardModalDoesNotJumpWhenSizeArrives(t *testing.T) {
+	var m tea.Model = NewModel(browseResult(), WithSSHKeys(twoSSHKeys()))
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = openWizard(m)
+
+	before := lipgloss.Height(m.(Model).renderWizard())
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	after := lipgloss.Height(m.(Model).renderWizard())
+
+	if before != after {
+		t.Errorf("wizard modal height jumped when the window size arrived: before=%d after=%d", before, after)
 	}
 }
 
@@ -123,7 +310,6 @@ func TestConfirmingAddRunsCommandThenRescans(t *testing.T) {
 		ranArgs = cmd.Args
 		return func() tea.Msg { return done(nil) }
 	}
-
 	rescanned := false
 	rescan := func() skills.ScanResult {
 		rescanned = true
@@ -133,21 +319,11 @@ func TestConfirmingAddRunsCommandThenRescans(t *testing.T) {
 		}
 	}
 
-	var m tea.Model = NewModel(browseResult(),
-		WithAddRunner(runner),
-		WithRescan(rescan),
-	)
+	var m tea.Model = NewModel(browseResult(), WithAddRunner(runner), WithRescan(rescan))
 
-	m = press(m, ":")
-	m = press(m, "a")
-	m = typeSource(m, "owner/repo")
-
-	next, cmd := m.Update(tea.KeyPressMsg{Text: "enter"})
-	if cmd == nil {
-		t.Fatal("expected a command after confirming add")
-	}
-	msg := cmd()
-	m, _ = next.Update(msg)
+	m = openWizard(m)
+	m = wtype(m, "owner/repo")
+	m = wsend(m, namedKey(tea.KeyEnter))
 
 	wantArgs := []string{"npx", "skills", "add", "owner/repo", "-g"}
 	if !slices.Equal(ranArgs, wantArgs) {
