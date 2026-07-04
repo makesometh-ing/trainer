@@ -1133,7 +1133,17 @@ passes with 0 lint issues.
 
 ---
 
-## Slice 13: Release pipeline — GoReleaser + Homebrew + `.deb`, tracer bullet to v1.0.0 — TODO
+## Slice 13: Release pipeline — GoReleaser + Homebrew + `.deb`, tracer bullet to v1.0.0 — DONE
+
+**Done (2026-07-04):** `v0.0.1-rc.1` proved the pipeline end to end (build →
+GitHub pre-release with 7 assets → formula pushed to the tap → downloaded binary
+ran and reported its version; `brew install` confirmed by the user). The release
+action versions were then bumped to Node 24 majors (`checkout@v7`,
+`setup-go@v6`, `goreleaser-action@v7`) and `v1.0.0` was cut: run green with no
+deprecation warning, release marked not-prerelease with all 7 assets, tap
+formula at 1.0.0 (`on_macos` + `on_linux`). The rc tag was deleted. Deleting the
+rc GitHub pre-release needs a token with repo write access (the local `gh` token
+is pull-only), so it is left for a maintainer.
 
 **Goal:** One tag push publishes trainer. Pushing a `v*` tag builds macOS and
 Linux binaries (amd64 + arm64), attaches tar.gz archives, `checksums.txt`, and
