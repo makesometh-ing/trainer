@@ -62,13 +62,16 @@ func TestFooterDetailsSkillTab(t *testing.T) {
 	if !strings.Contains(f, "DETAILS") {
 		t.Errorf("expected DETAILS chip, got:\n%s", f)
 	}
-	for _, want := range []string{"ctrl+d/u", "ctrl+f/b", "g/G", "scroll"} {
+	for _, want := range []string{"ctrl+d/u", "g/G", "scroll"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("expected scroll key %q in SKILL.md footer, got:\n%s", want, f)
 		}
 	}
 	if strings.Contains(f, "i/r/s/a") {
 		t.Errorf("did not expect tab keys in footer, got:\n%s", f)
+	}
+	if strings.Contains(f, "ctrl+f/b") {
+		t.Errorf("did not expect full-page scroll in the footer, got:\n%s", f)
 	}
 	if strings.Contains(f, "focus content") || strings.Contains(f, "focus files") {
 		t.Errorf("did not expect a file-list toggle on the SKILL.md tab, got:\n%s", f)

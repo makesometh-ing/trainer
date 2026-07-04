@@ -29,10 +29,14 @@ func TestHelpModalKeysAreAccurate(t *testing.T) {
 	if strings.Contains(out, "gg/G") {
 		t.Errorf("help lists gg/G but the handler jumps to top on a single g, got:\n%s", out)
 	}
-	for _, want := range []string{"g/G", "ctrl+f/b"} {
+	for _, want := range []string{"g/G", "ctrl+d/u"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected help to list %q, got:\n%s", want, out)
 		}
+	}
+	// Full-page scroll was removed (its ctrl+b clashed with the tmux/herdr prefix).
+	if strings.Contains(out, "ctrl+f/b") || strings.Contains(out, "full-page") {
+		t.Errorf("did not expect full-page scroll in help, got:\n%s", out)
 	}
 }
 

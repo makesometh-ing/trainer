@@ -89,7 +89,6 @@ func (m Model) footerParts() (chip string, items []footerItem) {
 			items = []footerItem{
 				item(m.keys.detailMove, "scroll"),
 				item(m.keys.halfPage, "half-page"),
-				item(m.keys.fullPage, "page"),
 				item(m.keys.topBottom, "top/bottom"),
 			}
 			items = append(items, m.globalTail()...)
@@ -108,7 +107,6 @@ func (m Model) footerParts() (chip string, items []footerItem) {
 		items = []footerItem{
 			item(m.keys.detailMove, "scroll"),
 			item(m.keys.halfPage, "half-page"),
-			item(m.keys.fullPage, "page"),
 			item(m.keys.topBottom, "top/bottom"),
 			item(m.keys.subfocus, "focus files"),
 		}

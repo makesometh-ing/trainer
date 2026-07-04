@@ -113,13 +113,19 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.focusRight()
 		}
+	case key.Matches(msg, m.keys.halfPage):
+		// ctrl+d/u scroll the displayed content from any pane, the one deliberate
+		// global override; every other Details key is gated on Details focus.
+		if msg.String() == "ctrl+d" {
+			m.content.HalfPageDown()
+		} else {
+			m.content.HalfPageUp()
+		}
 	case key.Matches(msg, m.keys.tabs),
 		key.Matches(msg, m.keys.subfocus),
-		key.Matches(msg, m.keys.halfPage),
-		key.Matches(msg, m.keys.fullPage),
 		key.Matches(msg, m.keys.topBottom):
-		// Tab, subfocus, and scroll keys act on the Details pane, so they apply
-		// only while it is focused.
+		// Tab, subfocus, and top/bottom keys act on the Details pane, so they
+		// apply only while it is focused.
 		if m.focus == paneDetail {
 			m.applyDetailKey(msg.String())
 		}
@@ -139,14 +145,6 @@ func (m *Model) applyDetailKey(key string) {
 		m.setTab(tabAssets)
 	case "tab":
 		m.toggleSubfocus()
-	case "ctrl+d":
-		m.content.HalfPageDown()
-	case "ctrl+u":
-		m.content.HalfPageUp()
-	case "ctrl+f":
-		m.content.PageDown()
-	case "ctrl+b":
-		m.content.PageUp()
 	case "g":
 		m.content.GotoTop()
 	case "G":

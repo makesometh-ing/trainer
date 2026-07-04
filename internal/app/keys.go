@@ -31,7 +31,6 @@ type keymap struct {
 	subfocus   key.Binding // tab
 	detailMove key.Binding // j / k (move file / scroll content)
 	halfPage   key.Binding // ctrl+d / ctrl+u
-	fullPage   key.Binding // ctrl+f / ctrl+b
 	topBottom  key.Binding // g / G
 
 	// Command palette.
@@ -60,8 +59,7 @@ func newKeymap() keymap {
 		tabs:       key.NewBinding(key.WithKeys("i", "r", "s", "a"), key.WithHelp("i/r/s/a", "SKILL.md / References / Scripts / Assets")),
 		subfocus:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "toggle file list / content")),
 		detailMove: key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move file / scroll content")),
-		halfPage:   key.NewBinding(key.WithKeys("ctrl+d", "ctrl+u"), key.WithHelp("ctrl+d/u", "half-page scroll")),
-		fullPage:   key.NewBinding(key.WithKeys("ctrl+f", "ctrl+b"), key.WithHelp("ctrl+f/b", "full-page scroll")),
+		halfPage:   key.NewBinding(key.WithKeys("ctrl+d", "ctrl+u"), key.WithHelp("ctrl+d/u", "half-page scroll (any pane)")),
 		topBottom:  key.NewBinding(key.WithKeys("g", "G"), key.WithHelp("g/G", "top / bottom of content")),
 
 		addCmd:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add skill")),
@@ -81,7 +79,7 @@ func (k keymap) helpGroups() []helpGroup {
 	return []helpGroup{
 		{"Global", []key.Binding{k.focusPanes, k.moveFocus, k.palette, k.help, k.quit}},
 		{"Skills pane", []key.Binding{k.move, k.search, k.filter, k.reset, k.filterMove, k.filterApply, k.filterClear}},
-		{"Details pane", []key.Binding{k.tabs, k.subfocus, k.detailMove, k.halfPage, k.fullPage, k.topBottom}},
+		{"Details pane", []key.Binding{k.tabs, k.subfocus, k.detailMove, k.halfPage, k.topBottom}},
 		{"Command palette", []key.Binding{k.addCmd, k.deleteCmd, k.updateCmd}},
 	}
 }

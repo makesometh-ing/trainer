@@ -979,9 +979,9 @@ passes with 0 lint issues.
 **Footer contents by context (exact, after omissions):**
 - `SCOPE` — `j/k switch scope · h/l move focus · : commands · ? keys · q quit`
 - `SKILLS` — `j/k select · / search · f filter · r reset · h/l move focus · : commands · ? keys · q quit`
-- `DETAILS`, SKILL.md tab — `j/k scroll · ctrl+d/u half-page · ctrl+f/b page · g/G top/bottom · h/l move focus · : commands · ? keys · q quit`
+- `DETAILS`, SKILL.md tab — `j/k scroll · ctrl+d/u half-page · g/G top/bottom · h/l move focus · : commands · ? keys · q quit`
 - `DETAILS`, file tab + list active — `j/k select file · tab focus content · h/l move focus · : commands · ? keys · q quit`
-- `DETAILS`, file tab + content active — `j/k scroll · ctrl+d/u half-page · ctrl+f/b page · g/G top/bottom · tab focus files · h/l move focus · : commands · ? keys · q quit`
+- `DETAILS`, file tab + content active — `j/k scroll · ctrl+d/u half-page · g/G top/bottom · tab focus files · h/l move focus · : commands · ? keys · q quit`
 - `SEARCH` — `type to filter · enter apply · esc clear`
 - `FILTER` — `h/l move option · space apply · c clear · esc done`
 
@@ -1028,7 +1028,7 @@ passes with 0 lint issues.
 2. **Footer for the SCOPE context.** Focus pane 1; footer shows `j/k switch scope`
    and the global tail, and none of `/`, `f`, `r`.
 3. **Footer for DETAILS / SKILL.md tab.** Focus pane 3 on the SKILL.md tab; footer
-   shows the scroll keys (`ctrl+d/u`, `ctrl+f/b`, `g/G`), no `tab` toggle, and
+   shows the scroll keys (`ctrl+d/u`, `g/G`), no `tab` toggle, and
    omits `i/r/s/a`.
 4. **Footer for DETAILS / file tab, list active.** Select a file tab (subfocus
    list); footer shows `j/k select file` and `tab focus content`.
@@ -1111,6 +1111,16 @@ passes with 0 lint issues.
   `dependencies_test.go` (`ConfirmContinueWithoutNPX` removed), and the
   `palette_test.go` / `dependency_test.go` / `add_test.go` / `delete_test.go`
   tests rewritten to the dim-tag behavior.
+
+**Refinements after manual testing (Slice 12):**
+- Full-page scroll (`ctrl+f`/`ctrl+b`) is removed: `ctrl+b` clashes with the
+  tmux and herdr prefix key, and half-page (`ctrl+d/u`) plus `g/G` already cover
+  fast scrolling. The `fullPage` binding, its help entry, its dispatch, and the
+  footer `page` items are gone.
+- `ctrl+d`/`ctrl+u` now scroll the Details content viewport from any pane, not
+  only when Details is focused — the one deliberate global scroll override. It is
+  handled in `handleKey` before the pane-gated Details block, and is not added to
+  the SCOPE/SKILLS footers (it stays listed only in the DETAILS footer).
 
 ---
 

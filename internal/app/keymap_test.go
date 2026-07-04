@@ -29,12 +29,31 @@ func longContentModel() tea.Model {
 	return m
 }
 
+// ctrl+d/u scroll the displayed content from any pane, unlike the other keys
+// which act only on the focused pane. This is the one deliberate global override.
+func TestHalfPageScrollsContentFromAnyPane(t *testing.T) {
+	for _, focusKey := range []string{"1", "2"} { // Scope, then Skills
+		m := longContentModel() // starts focused on Details
+		m = press(m, focusKey)  // move focus away from Details
+		before := view(m)
+		m = press(m, "ctrl+d")
+		if view(m) == before {
+			t.Errorf("ctrl+d did not scroll content while pane %q was focused", focusKey)
+		}
+		up := view(m)
+		m = press(m, "ctrl+u")
+		if view(m) == up {
+			t.Errorf("ctrl+u did not scroll content while pane %q was focused", focusKey)
+		}
+	}
+}
+
 // Every scroll key the help modal lists must actually move the content. This
 // guards against the help and the handlers listing different keys: g (not gg)
-// jumps to the top, G to the bottom, ctrl+d/u half-page, ctrl+f/b full-page.
+// jumps to the top, G to the bottom, ctrl+d/u half-page.
 func TestHelpScrollKeysActuallyScroll(t *testing.T) {
 	// From the top, these keys move the content down (the frame changes).
-	for _, k := range []string{"ctrl+d", "ctrl+f", "G"} {
+	for _, k := range []string{"ctrl+d", "G"} {
 		m := longContentModel()
 		before := view(m)
 		m = press(m, k)
@@ -44,7 +63,7 @@ func TestHelpScrollKeysActuallyScroll(t *testing.T) {
 	}
 
 	// From the bottom, these keys move the content up.
-	for _, k := range []string{"ctrl+u", "ctrl+b", "g"} {
+	for _, k := range []string{"ctrl+u", "g"} {
 		m := longContentModel()
 		m = press(m, "G") // go to the bottom first
 		before := view(m)

@@ -401,8 +401,11 @@ Details pane (all of these keys act only while the Details pane is focused):
   with a file list
 - `j` / `k` — move the selected file when the file list is active
 - `j` / `k` — scroll content one line when the content is active
-- `ctrl+d` / `ctrl+u` — scroll content half-page down/up
-- `ctrl+f` / `ctrl+b` — scroll content full-page down/up
+- `ctrl+d` / `ctrl+u` — scroll content half-page down/up. These act on the
+  Details content viewport from any pane, not only when Details is focused: they
+  are the one deliberate global scroll override. There is no full-page binding —
+  `ctrl+f`/`ctrl+b` are unused because `ctrl+b` clashes with the tmux and herdr
+  prefix key.
 - `g` / `G` — jump content to top/bottom (single `g`, not a `gg` sequence)
 - `h` / `l` — navigate panes, not detail subfocus
 
@@ -453,7 +456,7 @@ The chip and key list by context:
 - `SCOPE` (Scope pane focused) — `j/k` switch scope, `h/l` move focus, `:` commands, `?` keys, `q` quit.
 - `SKILLS` (Skills pane focused) — `j/k` select, `/` search, `f` filter, `r` reset, then the move-focus / commands / keys / quit tail.
 - `DETAILS` (Details pane focused) — the chip stays `DETAILS`; the key list depends on the tab and subfocus:
-  - `SKILL.md` tab (no file list) — `j/k` scroll, `ctrl+d/u` half-page, `ctrl+f/b` page, `g/G` top/bottom, then the tail.
+  - `SKILL.md` tab (no file list) — `j/k` scroll, `ctrl+d/u` half-page, `g/G` top/bottom, then the tail.
   - a file tab with the file list active — `j/k` select file, `tab` focus content, then the tail.
   - a file tab with the content active — the scroll keys, `tab` focus files, then the tail.
 - `SEARCH` (search box focused) — `type to filter`, `enter` apply, `esc` clear.
