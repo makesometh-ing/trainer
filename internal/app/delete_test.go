@@ -196,7 +196,7 @@ func runLockDelete(t *testing.T, section skills.Section) ([]string, bool) {
 func TestGlobalLockDeleteAddsGlobalFlagAndRescans(t *testing.T) {
 	ranArgs, rescanned := runLockDelete(t, skills.SectionGlobal)
 
-	wantArgs := []string{"npx", "skills", "remove", "alpha", "--global"}
+	wantArgs := []string{"npx", "skills@latest", "remove", "alpha", "--global"}
 	if !slices.Equal(ranArgs, wantArgs) {
 		t.Errorf("ran args = %v, want %v", ranArgs, wantArgs)
 	}
@@ -208,7 +208,7 @@ func TestGlobalLockDeleteAddsGlobalFlagAndRescans(t *testing.T) {
 func TestProjectLockDeleteOmitsGlobalFlagAndRescans(t *testing.T) {
 	ranArgs, rescanned := runLockDelete(t, skills.SectionProject)
 
-	wantArgs := []string{"npx", "skills", "remove", "alpha"}
+	wantArgs := []string{"npx", "skills@latest", "remove", "alpha"}
 	if !slices.Equal(ranArgs, wantArgs) {
 		t.Errorf("ran args = %v, want %v", ranArgs, wantArgs)
 	}

@@ -2,17 +2,14 @@
 
 ![Trainer browsing skills across scopes](docs/screenshot.png)
 
-Trainer is a terminal app for browsing, inspecting, adding, and deleting the
-agent skills installed on your machine. A skill is a reusable agent capability:
-a directory with a `SKILL.md` file and optional supporting files. Trainer finds
-every place skills live, on your machine, the shared `.agents` store and each
-harness's own store (claude, codex, opencode, pi, and so on), and lets you look
-through them and manage them from one screen.
+Trainer is a terminal app for browsing, inspecting, and managing agent skills
+installed on your machine. It scans every known global location for agent skills
+(`.agents` + supported harnesses) as well as known project-local locations
+(`.agents` + supported harnesses).
 
-It does not replace the installer. Adding, deleting, and updating skills call
-`npx skills` under the hood, so those actions need Node/`npx` on your `PATH`.
-Without `npx`, Trainer still browses and inspects; the add/delete/update
-commands are dimmed.
+Adding, updating, and deleting skills is supported via the industry-standard
+[Vercel skills script](https://github.com/vercel-labs/skills) or file-system
+access for locally installed skills.
 
 ## What it detects
 
