@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,10 +16,19 @@ import (
 )
 
 func main() {
+	cmd := newCommand(launchTUI, os.Stdout, os.Stderr)
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "trainer: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// launchTUI scans every skill scope and runs the interactive program. It is the
+// command's default action when no flag short-circuits.
+func launchTUI() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "trainer: cannot resolve home directory: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot resolve home directory: %w", err)
 	}
 
 	// npx availability gates the add/update/delete commands inside the TUI (they
@@ -27,8 +37,7 @@ func main() {
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "trainer: cannot resolve working directory: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot resolve working directory: %w", err)
 	}
 
 	results := skills.ScanAll(home, cwd)
@@ -55,9 +64,8 @@ func main() {
 		app.WithDeleteRunner(runner),
 		app.WithRescan(rescan),
 	)
-	program := tea.NewProgram(model)
-	if _, err := program.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "trainer: %v\n", err)
-		os.Exit(1)
+	if _, err := tea.NewProgram(model).Run(); err != nil {
+		return err
 	}
+	return nil
 }

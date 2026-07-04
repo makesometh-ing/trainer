@@ -30,3 +30,9 @@ go.work.sum
 
 # Scratch area for manual npx-skills install experiments
 .tmp/
+
+# Local skill-store fixtures placed at the repo root to test detection via
+# `make run` (a real .agents / .claude store and its project lock).
+.agents/
+.claude/
+skills-lock.json

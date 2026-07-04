@@ -11,6 +11,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/sahilm/fuzzy v0.1.1
+	github.com/urfave/cli/v3 v3.10.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

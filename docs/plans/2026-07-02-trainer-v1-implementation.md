@@ -1130,3 +1130,162 @@ passes with 0 lint issues.
 - **`go.mod` re-resolution.** Deps re-add as slices import them; run `go mod tidy` at the end of each slice.
 - **View test brittleness.** Assert substrings, never full-frame snapshots — Lip Gloss styling and width padding make snapshots fragile and coupled to layout.
 - **No real `npx` in tests.** Only filesystem delete of a skill on disk executes for real (temp dir). Everything else is construction + injected runner.
+
+---
+
+## Slice 13: Release pipeline — GoReleaser + Homebrew + `.deb`, tracer bullet to v1.0.0 — TODO
+
+**Goal:** One tag push publishes trainer. Pushing a `v*` tag builds macOS and
+Linux binaries (amd64 + arm64), attaches tar.gz archives, `checksums.txt`, and
+Debian/Ubuntu `.deb` packages to a GitHub release with commit-based release
+notes, and pushes an updated Homebrew formula to `makesometh-ing/homebrew-tap`
+so `brew install makesometh-ing/tap/trainer` works on macOS and Linux. First
+real release is **v1.0.0** (semver), proven end-to-end by a disposable
+pre-release tag first.
+
+This is a vertical tracer bullet: the smallest change that makes a real,
+installable release happen top to bottom, not a partial or per-platform build.
+
+### Decisions locked (from grilling, 2026-07-04)
+
+- **Tool: GoReleaser** (off-the-shelf), not hand-rolled bash. One
+  `.goreleaser.yaml` + one workflow. Chosen because it is the standard tool and
+  does cross-compile, archives, checksums, changelog, GitHub release, `.deb`,
+  and the tap formula push in one config. Nothing about other org repos
+  constrains this; the only reused facts are that `makesometh-ing/homebrew-tap`
+  exists and `BOT_TOKEN` can push to it.
+- **Trigger:** `push: tags: ["v*"]`. GoReleaser runs once and does everything
+  atomically — there is no "create release, then attach" ordering to get wrong.
+- **Targets:** `darwin` + `linux`, `amd64` + `arm64`, `CGO_ENABLED=0` (static;
+  covers Debian, Ubuntu, and every other Linux distro — they are not different).
+- **Artifacts:** four `*.tar.gz` archives, `checksums.txt`, and
+  `trainer_<version>_{amd64,arm64}.deb` (GoReleaser `nfpms`). No `.rpm`/`.apk`.
+- **Homebrew:** GoReleaser `brews:` pushes `Formula/trainer.rb` to
+  `makesometh-ing/homebrew-tap`; the formula has `on_macos` **and** `on_linux`
+  blocks. Cross-repo push uses `BOT_TOKEN` via
+  `HOMEBREW_TAP_GITHUB_TOKEN`. The GitHub release itself uses the workflow's
+  automatic `GITHUB_TOKEN`.
+- **Release notes:** GoReleaser changelog grouped from commit prefixes
+  (`feat`, `fix`, ...). No AI step, no model API key. The OpenCode action was
+  ruled out for v1.0.0: it needs a raw model API key (e.g. `ANTHROPIC_API_KEY`,
+  which is **not** `BOT_TOKEN` and **not** an OpenCode subscription) and is
+  comment/event-triggered, not a tag release-notes generator. AI-drafted notes
+  are a possible follow-on that does not touch this pipeline.
+- **Versioning:** semver. First real release `v1.0.0`. A disposable
+  `v0.0.1-rc.1` GitHub pre-release is pushed first to prove the whole pipeline
+  on real infra, then deleted, then `v1.0.0` is cut.
+- **License:** MIT. Add a `LICENSE` file; set `license "MIT"` in the brew block.
+- **CLI:** `github.com/urfave/cli/v3` owns flag parsing (`--version`, `--help`,
+  unknown flags), so nothing is hand-rolled and subcommands can be added later.
+
+### The one code change (the RED→GREEN seam)
+
+`cmd/trainer/main.go` launches the Bubble Tea program immediately with no flag
+parsing. A Homebrew formula's `test do` block runs a command with no terminal
+attached; without a flag that prints and exits, the binary would try to open
+`/dev/tty` and the formula test would fail. So trainer needs `--version` and
+`--help` that print and exit **before** the TUI starts, with the version string
+injected at build time.
+
+Flag parsing uses **`github.com/urfave/cli/v3`** (off-the-shelf, not
+hand-rolled), which owns `--version`, `--help`, and unknown-flag handling and
+gives a place to hang subcommands later.
+
+**Confirmed seam:** `newCommand(launch func() error, stdout, stderr io.Writer)
+*cli.Command` in package `main` (file `cmd/trainer/run.go`, tested by
+`cmd/trainer/run_test.go`). The command's default `Action` calls `launch`;
+`--version`/`--help` are handled by cli and never reach `launch`. Tests build
+the command with a spy `launch` and assert whether a given argv would launch or
+was short-circuited by a flag. `main()` builds the command with `launchTUI` (the
+real setup + program run) and calls `cmd.Run(ctx, os.Args)`; a returned error
+prints to stderr and exits 1. `var version = "dev"` in package `main`;
+GoReleaser overrides it with `-ldflags "-s -w -X main.version={{.Version}}"`.
+
+Flag behavior is the only unit-testable piece. The GoReleaser config and
+workflow are YAML and are verified by `goreleaser check` +
+`goreleaser release --snapshot --clean` + the disposable-tag CI run, not Go
+tests.
+
+### RED then GREEN order (one behavior per cycle)
+
+1. **RED** `TestVersionFlagPrintsVersionAndDoesNotLaunch`: running the command
+   with `["trainer", "--version"]` and `version` set to a known literal does not
+   call `launch`, returns no error, and writes that version to stdout.
+   **GREEN:** `newCommand` with `Version: version` + spy `launch`.
+2. **RED** `TestHelpFlagPrintsUsageAndDoesNotLaunch`: `--help` (and `-h`) does
+   not launch, no error, and stdout names the program and lists `--version` and
+   `--help`. **GREEN:** cli's built-in help (set `Usage`).
+3. **RED** `TestNoArgsLaunches`: `["trainer"]` calls `launch`, no error, prints
+   nothing. **GREEN:** default `Action` calls `launch`; wire `main` +
+   `launchTUI`.
+4. **RED** `TestUnknownFlagErrorsWithoutLaunch`: `--nope` returns an error and
+   does not launch (the built binary exits 1). **GREEN:** cli's default
+   flag-parse error.
+
+Each cycle keeps the app compiling and `make verify` green. Expected version in
+cycle 1 comes from a test-set literal, not read back the way the code sets it
+(no tautology).
+
+### Non-Go verification (integration / gold standard for the CI parts)
+
+- `goreleaser check` passes (config schema valid).
+- `goreleaser release --snapshot --clean` produces, in `dist/`: 4 archives,
+  `checksums.txt`, 2 `.deb`, and a generated `trainer.rb` with both `on_macos`
+  and `on_linux` — inspected by hand.
+- **Disposable tag:** push `v0.0.1-rc.1` → Actions run green → release marked
+  pre-release → tap formula updated → `brew install makesometh-ing/tap/trainer`
+  → `trainer --version` prints `0.0.1-rc.1`. Then delete the test release + tag.
+- **Definition of done:** one disposable tag went build → release → tap →
+  `brew install` → running binary, then `v1.0.0` is cut the same way.
+
+`goreleaser` is not installed locally and will not be installed here
+(no-unrequested-installs). The local `check`/`snapshot` steps are run by the
+user with `!`, or skipped in favour of the disposable-tag CI run, which
+exercises the real thing.
+
+### Repo settings this needs (user action, flagged not assumed)
+
+- `BOT_TOKEN` must be present as an Actions secret on the `trainer` repo, with
+  push access to `makesometh-ing/homebrew-tap`.
+- Actions must be allowed to create releases (`contents: write` in the workflow;
+  default token is enough for the release, `BOT_TOKEN` for the tap).
+
+### Files created / changed
+
+- **New:** `.goreleaser.yaml`, `.github/workflows/release.yml`, `LICENSE` (MIT),
+  `cmd/trainer/run.go`, `cmd/trainer/run_test.go`, `README.md`, `CONTRIBUTING.md`.
+- **Changed:** `cmd/trainer/main.go` (build the cli command, move setup into
+  `launchTUI`), `Makefile` (optional `release-snapshot` target), `go.mod` /
+  `go.sum` (`github.com/urfave/cli/v3`).
+
+### Public-facing docs (part of this slice)
+
+A public v1.0.0 needs a `README.md` and a way in for contributors:
+
+- `README.md`, plain voice (no marketing/AI phrasing): what Trainer is and does,
+  install (brew for macOS + Linux, `.deb` for Debian/Ubuntu, tarball for other
+  Linux), default keybindings taken verbatim from `internal/app/keys.go`
+  (`helpGroups`: Global / Skills pane / Details pane / Command palette), a
+  Contributing section linking to `CONTRIBUTING.md`, and the roadmap below.
+- `CONTRIBUTING.md`: build/run/`make verify`, the test-first vertical-slice
+  convention, and pull-request expectations.
+- **No `CONTRIBUTORS.md`.** GitHub's contributors graph lists contributors
+  automatically; a hand-maintained names file is duplicate upkeep. An
+  all-contributors bot is the route if in-repo credit is wanted later.
+
+**Roadmap (README, in order):**
+
+1. Support the same set of agents that `npx skills` supports.
+2. Custom keybinding config.
+3. Manual skill creator and editor.
+4. AI skill creator.
+
+### Explicit non-goals for this slice (respect scope)
+
+- No general CI (build/test/lint on PR) — this slice is release only.
+- No hosted apt repo / `apt install trainer` — deferred as its own project.
+- No AI-drafted release notes — follow-on, does not touch this pipeline.
+- No macOS codesigning/notarization — `brew` strips the quarantine attribute, so
+  the brew install path needs neither.
+- No glossary/ADR change — "release", "tap", "formula", ".deb", "semver" are
+  standard packaging terms, not trainer domain vocabulary.

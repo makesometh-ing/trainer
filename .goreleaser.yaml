@@ -1,0 +1,84 @@
+# GoReleaser config. Validate with `goreleaser check`; dry-run with
+# `goreleaser release --snapshot --clean`. A tag push runs it for real in CI.
+version: 2
+
+project_name: trainer
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: trainer
+    main: ./cmd/trainer
+    binary: trainer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: trainer
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- .Arch }}
+
+nfpms:
+  - id: trainer
+    package_name: trainer
+    formats:
+      - deb
+    maintainer: makesometh.ing <noreply@makesometh.ing>
+    description: Terminal app for browsing and managing installed agent skills
+    homepage: https://github.com/makesometh-ing/trainer
+    license: MIT
+    bindir: /usr/bin
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+brews:
+  - name: trainer
+    repository:
+      owner: makesometh-ing
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/makesometh-ing/trainer
+    description: Terminal app for browsing and managing installed agent skills
+    license: MIT
+    install: |
+      bin.install "trainer"
+    test: |
+      system "#{bin}/trainer", "--version"
+
+release:
+  # A tag with a prerelease suffix (e.g. v0.0.1-rc.1) is marked pre-release.
+  prerelease: auto

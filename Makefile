@@ -1,4 +1,4 @@
-.PHONY: build test vet lint fmt fmt-check run verify tidy
+.PHONY: build test vet lint fmt fmt-check run verify tidy release-check release-snapshot
 
 build:
 	go build ./...
@@ -25,3 +25,10 @@ tidy:
 	go mod tidy
 
 verify: fmt-check vet test lint
+
+# Requires goreleaser (https://goreleaser.com). Not run by `verify`.
+release-check:
+	goreleaser check
+
+release-snapshot:
+	goreleaser release --snapshot --clean
