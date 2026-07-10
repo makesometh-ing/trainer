@@ -28,3 +28,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Cross-repo push of the Homebrew formula to makesometh-ing/homebrew-tap.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.BOT_TOKEN }}
+          # SSH deploy key for pushing the PKGBUILD to the AUR (aur.archlinux.org).
+          AUR_KEY: ${{ secrets.AUR_KEY }}

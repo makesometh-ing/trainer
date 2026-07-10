@@ -79,6 +79,26 @@ brews:
     test: |
       system "#{bin}/trainer", "--version"
 
+aurs:
+  # Binary AUR package (installs the prebuilt release binary, hence the -bin
+  # name convention). Pushes a PKGBUILD to ssh://aur@aur.archlinux.org over the
+  # AUR_KEY SSH deploy key. First tag push creates the AUR repo.
+  - name: trainer-bin
+    homepage: https://github.com/makesometh-ing/trainer
+    description: Terminal app for browsing and managing installed agent skills
+    maintainers:
+      - makesometh.ing <noreply@makesometh.ing>
+    license: MIT
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: ssh://aur@aur.archlinux.org/trainer-bin.git
+    provides:
+      - trainer
+    conflicts:
+      - trainer
+    package: |-
+      install -Dm755 "./trainer" "${pkgdir}/usr/bin/trainer"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/trainer-bin/LICENSE"
+
 release:
   # A tag with a prerelease suffix (e.g. v0.0.1-rc.1) is marked pre-release.
   prerelease: auto

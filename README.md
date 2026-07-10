@@ -36,6 +36,17 @@ Empty or absent locations are skipped. Support for the full set of agents that
 brew install makesometh-ing/tap/trainer
 ```
 
+**Arch Linux (AUR):** the package is `trainer-bin`. With
+[Shelly](https://www.seafoam-labs.org/shelly-alpm/):
+
+```sh
+shelly aur install trainer-bin   # install
+shelly upgrade-all               # update (all sources, incl. AUR)
+```
+
+Any other AUR helper works too (e.g. `yay -S trainer-bin`), or build it by hand
+with `git clone https://aur.archlinux.org/trainer-bin.git && cd trainer-bin && makepkg -si`.
+
 **Debian / Ubuntu:** download the `.deb` for your architecture from the
 [latest release](https://github.com/makesometh-ing/trainer/releases/latest) and
 install it:
