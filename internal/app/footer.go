@@ -18,6 +18,13 @@ const (
 	ctxDetails
 	ctxSearch
 	ctxFilter
+	// Skill Search add-flow zones. The footer stays live across the whole flow
+	// (design decision 3), naming the focused zone and its keys.
+	ctxAddChooser         // the add-flow entry chooser
+	ctxSkillSearchBox     // the search box
+	ctxSkillSearchResults // the results list
+	ctxSkillSearchDetail  // the Skill Detail
+	ctxPostInstall        // the post-install chooser
 )
 
 // footerItem is one key + its footer-specific description. The key text is
@@ -32,11 +39,30 @@ func item(b key.Binding, desc string) footerItem {
 	return footerItem{key: b.Help().Key, desc: desc}
 }
 
-// footerContext resolves which context the footer describes. Any open overlay
-// (palette, help, confirm, wizard) hides the footer.
+// footerContext resolves which context the footer describes. The palette, help,
+// confirm, and the manual Huh wizard hide the footer; the Skill Search add flow
+// keeps it live, resolving the chooser and the overlay's focused zone. The
+// chooser is checked before the overlay so the post-install chooser (which sits
+// on top of the still-open overlay) names its own keys.
 func (m Model) footerContext() footerCtx {
 	if m.palette || m.help || m.confirm != nil || m.wizard != nil {
 		return ctxHidden
+	}
+	if m.chooser != nil {
+		if m.chooser.kind == chooserPostInstall {
+			return ctxPostInstall
+		}
+		return ctxAddChooser
+	}
+	if m.skillSearch != nil {
+		switch m.skillSearch.zone {
+		case zoneList:
+			return ctxSkillSearchResults
+		case zoneDetail:
+			return ctxSkillSearchDetail
+		default:
+			return ctxSkillSearchBox
+		}
 	}
 	if m.skillsMode == modeSearch {
 		return ctxSearch
@@ -126,6 +152,67 @@ func (m Model) footerParts() (chip string, items []footerItem) {
 			item(m.keys.filterApply, "apply"),
 			item(m.keys.filterClear, "clear"),
 			{key: "esc", desc: "done"},
+		}
+	case ctxAddChooser:
+		// The chooser is a self-contained modal step: enter and esc are handled as
+		// literals by updateChooser, like the search/filter input modes above.
+		return "ADD", []footerItem{
+			item(m.keys.move, "select"),
+			{key: "enter", desc: "choose"},
+			{key: "esc", desc: "cancel"},
+		}
+	case ctxSkillSearchBox:
+		// The search box is an input mode: typing edits the query, enter/↓ hands
+		// off to the results list, esc backs out to the entry chooser.
+		return "SEARCH", []footerItem{
+			{desc: "type to search"},
+			{key: "enter/↓", desc: "results"},
+			{key: "esc", desc: "back"},
+		}
+	case ctxSkillSearchResults:
+		items := []footerItem{
+			item(m.keys.move, "select"),
+			item(m.keys.mktSort, "sort"),
+			item(m.keys.mktToDetail, "detail"),
+			item(m.keys.mktInstall, "install"),
+			item(m.keys.search, "search"),
+			{key: "esc", desc: "back"},
+		}
+		// The retry key is live only while the search is in its error state, so it
+		// is shown only then (mirrors the inline `space to retry` hint).
+		if m.skillSearch != nil && m.skillSearch.state == searchError {
+			items = append(items, item(m.keys.mktRetry, "retry"))
+		}
+		return "RESULTS", items
+	case ctxSkillSearchDetail:
+		items := []footerItem{
+			item(m.keys.tabs, "tabs"),
+			item(m.keys.subfocus, "files/content"),
+			item(m.keys.detailMove, "move"),
+			item(m.keys.mktToList, "list"),
+			item(m.keys.mktInstall, "install"),
+			item(m.keys.search, "search"),
+			{key: "esc", desc: "list"},
+		}
+		// The retry key is live only while the download is in its error state.
+		if m.skillSearch != nil && m.skillSearch.dlError {
+			items = append(items, item(m.keys.mktRetry, "retry"))
+		}
+		return "DETAIL", items
+	case ctxPostInstall:
+		// The post-install chooser mirrors the entry chooser. On success esc means
+		// Finish; on a failed install the chooser offers Try again / Back, so esc
+		// means Back.
+		escDesc := "finish"
+		chip := "ADDED"
+		if m.chooser != nil && m.chooser.failed {
+			escDesc = "back"
+			chip = "FAILED"
+		}
+		return chip, []footerItem{
+			item(m.keys.move, "select"),
+			{key: "enter", desc: "choose"},
+			{key: "esc", desc: escDesc},
 		}
 	}
 	return "", nil

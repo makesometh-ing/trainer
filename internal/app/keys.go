@@ -37,6 +37,19 @@ type keymap struct {
 	addCmd    key.Binding // a
 	deleteCmd key.Binding // d
 	updateCmd key.Binding // u
+
+	// Skill Search results list.
+	mktSort key.Binding // r / p / n
+
+	// Skill Search detail navigation.
+	mktToDetail key.Binding // l
+	mktToList   key.Binding // h
+
+	// Skill Search install.
+	mktInstall key.Binding // enter
+
+	// Skill Search retry, in an empty/error state.
+	mktRetry key.Binding // space
 }
 
 func newKeymap() keymap {
@@ -65,6 +78,15 @@ func newKeymap() keymap {
 		addCmd:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add skill")),
 		deleteCmd: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete skill")),
 		updateCmd: key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "update all skills")),
+
+		mktSort: key.NewBinding(key.WithKeys("r", "p", "n"), key.WithHelp("r/p/n", "sort by relevance / popularity / name")),
+
+		mktToDetail: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "open detail")),
+		mktToList:   key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "back to results")),
+
+		mktInstall: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "install skill")),
+
+		mktRetry: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "retry")),
 	}
 }
 
@@ -81,5 +103,6 @@ func (k keymap) helpGroups() []helpGroup {
 		{"Skills pane", []key.Binding{k.move, k.search, k.filter, k.reset, k.filterMove, k.filterApply, k.filterClear}},
 		{"Details pane", []key.Binding{k.tabs, k.subfocus, k.detailMove, k.halfPage, k.topBottom}},
 		{"Command palette", []key.Binding{k.addCmd, k.deleteCmd, k.updateCmd}},
+		{"Skill Search", []key.Binding{k.mktSort, k.mktToDetail, k.mktToList, k.mktInstall, k.mktRetry}},
 	}
 }

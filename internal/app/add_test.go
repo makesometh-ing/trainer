@@ -56,11 +56,14 @@ func wsend(m tea.Model, k tea.KeyPressMsg) tea.Model {
 	return pump(next, cmd)
 }
 
-// openWizard opens the add wizard via the command palette, pumping the form's
-// Init cmd so the first field is focused and ready for input.
+// openWizard opens the add wizard via the command palette and the entry
+// chooser: `:a` opens the chooser, then enter picks "Enter skill URL or
+// repository". It pumps the form's Init cmd so the first field is focused and
+// ready for input.
 func openWizard(m tea.Model) tea.Model {
 	m, _ = m.Update(runeKey(':'))
-	next, cmd := m.Update(runeKey('a'))
+	m, _ = m.Update(runeKey('a')) // opens the chooser
+	next, cmd := m.Update(namedKey(tea.KeyEnter))
 	return pump(next, cmd)
 }
 

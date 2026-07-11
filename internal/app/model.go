@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/makesometh-ing/trainer/internal/marketplace"
 	"github.com/makesometh-ing/trainer/internal/skills"
 	"github.com/makesometh-ing/trainer/internal/ssh"
 )
@@ -48,11 +49,15 @@ type Model struct {
 	deleteRunner AddRunner
 	rescan       RescanFunc
 
+	market *marketplace.Client
+
 	palette bool
 	help    bool
 
-	wizard  *addWizard
-	confirm *deleteConfirm
+	chooser     *addChooser
+	skillSearch *searchOverlay
+	wizard      *addWizard
+	confirm     *deleteConfirm
 
 	width  int
 	height int
@@ -101,6 +106,15 @@ func WithDeleteRunner(runner AddRunner) Option {
 func WithRescan(rescan RescanFunc) Option {
 	return func(m *Model) {
 		m.rescan = rescan
+	}
+}
+
+// WithMarketplace injects the Marketplace client that powers Skill Search. When
+// no client is injected the chooser's "Search for skills" option is dimmed and
+// inert.
+func WithMarketplace(c *marketplace.Client) Option {
+	return func(m *Model) {
+		m.market = c
 	}
 }
 

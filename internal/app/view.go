@@ -24,6 +24,15 @@ func (m Model) View() tea.View {
 	detail := m.renderDetail()
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, scope, list, detail)
+	// The Skill Search overlay draws before the chooser so the post-install
+	// chooser sits on top of the preserved overlay; the entry chooser never
+	// coexists with the overlay, so its stacking is unaffected.
+	if m.skillSearch != nil {
+		body = m.overlayCenter(body, m.renderSkillSearch())
+	}
+	if m.chooser != nil {
+		body = m.overlayCenter(body, m.renderChooser())
+	}
 	if m.wizard != nil {
 		body = m.overlayCenter(body, m.renderWizard())
 	}
@@ -323,8 +332,16 @@ func (m Model) renderContentWithScrollbar(rows int) []string {
 // whose length is the visible fraction of the content and whose position tracks
 // the scroll offset. When all the content fits, the column is blank.
 func (m Model) scrollbarColumn(rows int) []string {
+	return scrollbar(rows, m.content.TotalLineCount(), m.content.ScrollPercent(), m.theme)
+}
+
+// scrollbar returns one glyph per row for a viewport of total lines scrolled to
+// pct: a track with a solid thumb sized to the visible fraction and positioned
+// by the scroll offset. When all the content fits, the column is blank. Both the
+// installed-skill browser and the Skill Search detail render their scrollbar
+// through it.
+func scrollbar(rows, total int, pct float64, theme Theme) []string {
 	col := make([]string, rows)
-	total := m.content.TotalLineCount()
 	if rows <= 0 || total <= rows {
 		for i := range col {
 			col[i] = " "
@@ -338,15 +355,15 @@ func (m Model) scrollbarColumn(rows int) []string {
 	if thumb > rows {
 		thumb = rows
 	}
-	start := int(math.Round(m.content.ScrollPercent() * float64(rows-thumb)))
+	start := int(math.Round(pct * float64(rows-thumb)))
 	if start < 0 {
 		start = 0
 	}
 	if start > rows-thumb {
 		start = rows - thumb
 	}
-	track := lipgloss.NewStyle().Foreground(m.theme.Border)
-	thumbStyle := lipgloss.NewStyle().Foreground(m.theme.Accent)
+	track := lipgloss.NewStyle().Foreground(theme.Border)
+	thumbStyle := lipgloss.NewStyle().Foreground(theme.Accent)
 	for i := range col {
 		if i >= start && i < start+thumb {
 			col[i] = thumbStyle.Render("█")
@@ -406,6 +423,13 @@ func truncate(s string, w int) string {
 }
 
 func (m Model) renderTabs() string {
+	return m.renderTabsFor(m.tab)
+}
+
+// renderTabsFor draws the four-tab bar with the given tab highlighted. Both the
+// installed-skill browser and the Skill Search detail render it, so the tab bar
+// looks identical in each.
+func (m Model) renderTabsFor(active tab) string {
 	labels := []struct {
 		t     tab
 		label string
@@ -418,7 +442,7 @@ func (m Model) renderTabs() string {
 	parts := make([]string, 0, len(labels))
 	for _, l := range labels {
 		style := lipgloss.NewStyle().Foreground(m.theme.Muted)
-		if m.tab == l.t {
+		if active == l.t {
 			style = lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true)
 		}
 		parts = append(parts, style.Render(l.label))
@@ -525,17 +549,27 @@ func (m Model) detailWidth() int {
 }
 
 func (m Model) renderFileList(files []skills.SkillFile) []string {
-	if len(files) == 0 {
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = f.Name
+	}
+	return m.renderFileNames(names, m.fileSel, m.detailWidth())
+}
+
+// renderFileNames renders a file list with the selected entry highlighted, or a
+// muted "No files" line when empty. Both the installed-skill browser and the
+// Skill Search detail render their file lists through it.
+func (m Model) renderFileNames(names []string, sel, textW int) []string {
+	if len(names) == 0 {
 		return []string{lipgloss.NewStyle().Foreground(m.theme.Muted).Render("No files")}
 	}
-	textW := m.detailWidth()
 	if textW < 1 {
 		textW = 1
 	}
-	lines := make([]string, 0, len(files))
-	for i, f := range files {
-		name := "  " + f.Name
-		if i == m.fileSel {
+	lines := make([]string, 0, len(names))
+	for i, name := range names {
+		display := "  " + name
+		if i == sel {
 			// The selected file is marked by an elevated highlight band, matching
 			// the skill list, rather than a caret.
 			lines = append(lines, lipgloss.NewStyle().
@@ -543,10 +577,10 @@ func (m Model) renderFileList(files []skills.SkillFile) []string {
 				Background(m.theme.Elevated).
 				Bold(true).
 				Width(textW).
-				Render(truncate(name, textW)))
+				Render(truncate(display, textW)))
 			continue
 		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Fg).Render(truncate(name, textW)))
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.theme.Fg).Render(truncate(display, textW)))
 	}
 	return lines
 }

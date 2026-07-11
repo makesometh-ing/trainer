@@ -59,3 +59,19 @@ _Avoid_: resources
 **Skill Lock**:
 Installer-maintained source metadata used to explain where a skill came from.
 _Avoid_: app database, cache
+
+**Marketplace**:
+The skills.sh catalog that Trainer queries over HTTP to find skills that are not installed locally.
+_Avoid_: registry, store, index, repository
+
+**Marketplace Skill**:
+A skill offered in the Marketplace that Trainer can find and inspect via search but that is not yet installed on the machine.
+_Avoid_: remote skill, available skill, catalog skill, search result
+
+**Skill Search**:
+The flow that finds Marketplace Skills by query, previews a selected one in a Skill Detail view, and installs the chosen skill. Reached as a step in the add flow.
+_Avoid_: find, lookup, discovery, browse
+
+**Install Count**:
+The number of times a Marketplace Skill has been installed, shown as its popularity in Skill Search.
+_Avoid_: downloads, stars, popularity score

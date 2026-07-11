@@ -111,7 +111,10 @@ func (m Model) finishWizard() (tea.Model, tea.Cmd) {
 }
 
 // addFinishedMsg signals the add command completed and the model should rescan.
-type addFinishedMsg struct{}
+// err carries the install command's exit error (nil on success) so the Skill
+// Search post-install step can tell success from failure; the manual add path
+// ignores it.
+type addFinishedMsg struct{ err error }
 
 func (m Model) runAdd(source, keyPath string) (tea.Model, tea.Cmd) {
 	m.wizard = nil

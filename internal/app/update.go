@@ -22,6 +22,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateWizard(msg)
 	}
+	// An install through the Skill Search seam completes while the overlay is
+	// still open: rather than rescan immediately (the manual path below does),
+	// open the post-install chooser on top of the preserved overlay so the user
+	// can keep searching or finish. The overlay-less manual path is untouched.
+	if fm, ok := msg.(addFinishedMsg); ok && m.skillSearch != nil {
+		// A failed install must not claim success: the chooser is titled honestly
+		// (Install failed) and offers Try again / Back rather than Find more / Finish.
+		m.chooser = &addChooser{kind: chooserPostInstall, failed: fm.err != nil}
+		return m, nil
+	}
+	// While the post-install chooser is shown it sits on top of the still-open
+	// overlay (whose state is preserved for "Find more skills"), so it owns key
+	// presses ahead of the overlay's own message routing.
+	if m.chooser != nil && m.chooser.kind == chooserPostInstall {
+		if k, ok := msg.(tea.KeyPressMsg); ok {
+			return m.updateChooser(k)
+		}
+		// Non-key messages (async search/download results, spinner + dwell ticks,
+		// and terminal resizes) belong to the still-open overlay underneath.
+		// Forward them so an in-flight download that lands during the chooser is not
+		// dropped (leaving the detail on a frozen spinner) and a resize still
+		// re-lays-out the overlay. The overlay's epoch checks discard stale ones.
+		if m.skillSearch != nil {
+			return m.updateSkillSearch(msg)
+		}
+		return m, nil
+	}
+	// The Skill Search overlay owns every message while open: its grow animation
+	// arrives as animFrameMsg (not a key), so routing only key presses would
+	// strand the frames. Its own handler drops stale async messages.
+	if m.skillSearch != nil {
+		return m.updateSkillSearch(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -49,6 +82,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.confirm != nil {
 		return m.handleConfirmKey(msg)
+	}
+	if m.chooser != nil {
+		return m.updateChooser(msg)
 	}
 	if m.palette {
 		return m.handlePaletteKey(msg)
@@ -269,9 +305,11 @@ func (m Model) handlePaletteKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.addCmdDisabled() {
 			return m, nil
 		}
+		// The add command opens the entry chooser, not the wizard directly: the
+		// chooser lets the user pick manual entry or Skill Search.
 		m.palette = false
-		m.wizard = newAddWizard(m.sshKeys, m.theme)
-		return m, m.wizard.form.Init()
+		m.chooser = &addChooser{kind: chooserEntry}
+		return m, nil
 	case key.Matches(msg, m.keys.deleteCmd):
 		if m.deleteCmdDisabled() {
 			return m, nil

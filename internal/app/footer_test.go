@@ -1,11 +1,14 @@
 package app
 
 import (
+	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/h2non/gock"
 )
 
 // footerOf drives the model, then returns the plain (ANSI-stripped) footer line.
@@ -156,6 +159,162 @@ func TestFooterFilterContext(t *testing.T) {
 	}
 }
 
+// Slice 14, cycle 1: the add-flow entry chooser keeps the footer live with the
+// ADD chip and its keys — select / choose / cancel — and none of the browse or
+// global-tail keys.
+func TestFooterAddChooserContext(t *testing.T) {
+	var m tea.Model = withMarket()
+	m = openChooser(m)
+
+	f := footerOf(m)
+	if !strings.Contains(f, "ADD") {
+		t.Errorf("expected ADD chip, got:\n%s", f)
+	}
+	for _, want := range []string{"select", "choose", "cancel"} {
+		if !strings.Contains(f, want) {
+			t.Errorf("expected %q in the ADD footer, got:\n%s", want, f)
+		}
+	}
+	for _, unwanted := range []string{"commands", "switch scope", "sort", "quit"} {
+		if strings.Contains(f, unwanted) {
+			t.Errorf("did not expect %q in the ADD footer, got:\n%s", unwanted, f)
+		}
+	}
+}
+
+// Slice 14, cycle 2: the Skill Search box shows the SEARCH chip and its keys —
+// type to search / results / back — and none of the results-list sort keys.
+func TestFooterSkillSearchBoxContext(t *testing.T) {
+	var m tea.Model = withMarket()
+	m = settle(openSkillSearch(m, 100, 30))
+
+	f := footerOf(m)
+	if !strings.Contains(f, "SEARCH") {
+		t.Errorf("expected SEARCH chip in the search box, got:\n%s", f)
+	}
+	for _, want := range []string{"type to search", "results", "back"} {
+		if !strings.Contains(f, want) {
+			t.Errorf("expected %q in the search-box footer, got:\n%s", want, f)
+		}
+	}
+	for _, unwanted := range []string{"sort", "commands", "quit"} {
+		if strings.Contains(f, unwanted) {
+			t.Errorf("did not expect %q in the search-box footer, got:\n%s", unwanted, f)
+		}
+	}
+}
+
+// Slice 14, cycle 3: the results list shows the RESULTS chip and its keys —
+// sort / detail / install / search / back — with no retry outside the error
+// state; in the error state the retry key is advertised.
+func TestFooterSkillSearchResultsContext(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	m, _ = m.Update(namedKey(tea.KeyEnter)) // focus the results list
+
+	f := footerOf(m)
+	if !strings.Contains(f, "RESULTS") {
+		t.Errorf("expected RESULTS chip, got:\n%s", f)
+	}
+	for _, want := range []string{"sort", "detail", "install", "search", "back"} {
+		if !strings.Contains(f, want) {
+			t.Errorf("expected %q in the results footer, got:\n%s", want, f)
+		}
+	}
+	if strings.Contains(f, "retry") {
+		t.Errorf("did not expect a retry key outside the error state, got:\n%s", f)
+	}
+
+	// A failed search sets the error state; entering the list keeps it, and the
+	// footer then advertises the retry key.
+	gock.New("https://skills.sh").Get("/api/search").Reply(500)
+	var e tea.Model = withMarket()
+	e = settle(openSkillSearch(e, 100, 30))
+	e = typeSearch(e, "react")
+	e, cmd := fireDebounce(e)
+	e = runSearchCmd(e, cmd)                // 500 → searchError, still in the box
+	e, _ = e.Update(namedKey(tea.KeyEnter)) // hand off to the results list
+	if ef := footerOf(e); !strings.Contains(ef, "retry") {
+		t.Errorf("expected 'space retry' in the results footer error state, got:\n%s", ef)
+	}
+}
+
+// Slice 14, cycle 4: the Skill Detail shows the DETAIL chip and its keys —
+// tabs / files-content / move / list / install / search — and advertises the
+// retry key only when the download failed.
+func TestFooterSkillSearchDetailContext(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	m = seedDownload(t, m, mktDetailFiles())
+	m = enterDetail(m)
+
+	f := footerOf(m)
+	if !strings.Contains(f, "DETAIL") {
+		t.Errorf("expected DETAIL chip, got:\n%s", f)
+	}
+	for _, want := range []string{"i/r/s/a", "files/content", "list", "install"} {
+		if !strings.Contains(f, want) {
+			t.Errorf("expected %q in the detail footer, got:\n%s", want, f)
+		}
+	}
+	if strings.Contains(f, "retry") {
+		t.Errorf("did not expect a retry key without a download error, got:\n%s", f)
+	}
+
+	// A failed download sets the detail error state; the footer then advertises
+	// the retry key.
+	e := searchWithResults(t)
+	gock.New("https://skills.sh").
+		Get("/api/download/vercel-labs/agent-skills/vercel-react-best-practices").
+		Reply(500)
+	e, cmd := fireDwell(e)
+	e = runSearchCmd(e, cmd) // 500 → dlError
+	e = enterDetail(e)
+	if ef := footerOf(e); !strings.Contains(ef, "retry") {
+		t.Errorf("expected 'space retry' in the detail footer download-error state, got:\n%s", ef)
+	}
+}
+
+// Slice 14, cycle 5: the post-install chooser shows the ADDED chip and its keys
+// — select / choose / finish.
+func TestFooterPostInstallContext(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t, WithAddRunner(nopRunner()))
+	m = installFromList(m)
+
+	f := footerOf(m)
+	if !strings.Contains(f, "ADDED") {
+		t.Errorf("expected ADDED chip, got:\n%s", f)
+	}
+	for _, want := range []string{"select", "choose", "finish"} {
+		if !strings.Contains(f, want) {
+			t.Errorf("expected %q in the post-install footer, got:\n%s", want, f)
+		}
+	}
+}
+
+// A failed install titles the chooser honestly, so its footer must read FAILED
+// with esc meaning Back (not the success wording ADDED / finish).
+func TestFooterPostInstallFailureContext(t *testing.T) {
+	defer gock.Off()
+	failRunner := func(cmd *exec.Cmd, done func(error) tea.Msg) tea.Cmd {
+		return func() tea.Msg { return done(errors.New("npx exploded")) }
+	}
+	m := searchWithResults(t, WithAddRunner(failRunner))
+	m = installFromList(m)
+
+	f := footerOf(m)
+	if !strings.Contains(f, "FAILED") {
+		t.Errorf("expected FAILED chip on a failed install, got:\n%s", f)
+	}
+	if strings.Contains(f, "finish") {
+		t.Errorf("failed-install footer should not say finish, got:\n%s", f)
+	}
+	if !strings.Contains(f, "back") {
+		t.Errorf("expected esc back on a failed install, got:\n%s", f)
+	}
+}
+
 func TestFooterHiddenDuringModals(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -164,7 +323,7 @@ func TestFooterHiddenDuringModals(t *testing.T) {
 		{"palette", func(m tea.Model) tea.Model { return press(m, ":") }},
 		{"help", func(m tea.Model) tea.Model { return press(m, "?") }},
 		{"confirm", func(m tea.Model) tea.Model { return press(press(m, ":"), "d") }},
-		{"wizard", func(m tea.Model) tea.Model { return press(press(m, ":"), "a") }},
+		{"wizard", func(m tea.Model) tea.Model { return openWizard(m) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

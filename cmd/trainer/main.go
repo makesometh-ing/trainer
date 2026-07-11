@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/makesometh-ing/trainer/internal/app"
+	"github.com/makesometh-ing/trainer/internal/marketplace"
 	"github.com/makesometh-ing/trainer/internal/runtime"
 	"github.com/makesometh-ing/trainer/internal/skills"
 	"github.com/makesometh-ing/trainer/internal/ssh"
@@ -63,6 +64,7 @@ func launchTUI() error {
 		app.WithAddRunner(runner),
 		app.WithDeleteRunner(runner),
 		app.WithRescan(rescan),
+		app.WithMarketplace(marketplace.New()),
 	)
 	if _, err := tea.NewProgram(model).Run(); err != nil {
 		return err
