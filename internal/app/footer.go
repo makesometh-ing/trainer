@@ -171,6 +171,7 @@ func (m Model) footerParts() (chip string, items []footerItem) {
 		}
 	case ctxSkillSearchResults:
 		items := []footerItem{
+			item(m.keys.mktFocusPanes, "panes"),
 			item(m.keys.move, "select"),
 			item(m.keys.mktSort, "sort"),
 			item(m.keys.mktToDetail, "detail"),
@@ -186,13 +187,13 @@ func (m Model) footerParts() (chip string, items []footerItem) {
 		return "RESULTS", items
 	case ctxSkillSearchDetail:
 		items := []footerItem{
+			item(m.keys.mktFocusPanes, "panes"),
 			item(m.keys.tabs, "tabs"),
 			item(m.keys.subfocus, "files/content"),
-			item(m.keys.detailMove, "move"),
-			item(m.keys.mktToList, "list"),
+			item(m.keys.mktToList, "results"),
 			item(m.keys.mktInstall, "install"),
 			item(m.keys.search, "search"),
-			{key: "esc", desc: "list"},
+			{key: "esc", desc: "back"},
 		}
 		// The retry key is live only while the download is in its error state.
 		if m.skillSearch != nil && m.skillSearch.dlError {
@@ -248,14 +249,22 @@ func (m Model) renderFooter() string {
 	chipStr := chipStyle.Render(" "+chip+" ") + " "
 	full := chipStr + strings.Join(rendered, sep)
 
+	// The main browser pins its "? keys" help item so it is never dropped; the
+	// Skill Search contexts carry no help item, so the last item (esc / retry) is
+	// pinned instead. Either way a too-narrow footer drops its middle, never its
+	// tail, so it fits the frame without losing esc or the retry hint.
+	if pinnedIdx < 0 {
+		pinnedIdx = len(rendered) - 1
+	}
+
 	// Full line fits (or width is unknown): render it as is.
-	if m.width <= 0 || lipgloss.Width(full) <= m.width || pinnedIdx < 0 {
+	if m.width <= 0 || lipgloss.Width(full) <= m.width || len(rendered) < 2 {
 		return full
 	}
 
 	// Too narrow: keep the chip and a left prefix of the context keys, drop the
-	// run in the middle to an ellipsis, and pin "? keys" as the final item. The
-	// help item is excluded from the droppable prefix so it is never dropped.
+	// run in the middle to an ellipsis, and pin the final item. The pinned item is
+	// excluded from the droppable prefix so it is never dropped.
 	cand := make([]string, 0, len(rendered)-1)
 	cand = append(cand, rendered[:pinnedIdx]...)
 	cand = append(cand, rendered[pinnedIdx+1:]...)

@@ -25,7 +25,7 @@ The post-install step is **search-flow-specific**; the manual "Enter reference" 
 ## Decisions (agreed)
 
 1. **Entry point:** chooser as step 1 of the existing add wizard, in-place swap. One entry (`:a`).
-2. **Escape ladder (step-back):** in list/detail → search box; search box → chooser; chooser → close. `/` is the fast jump to the search box from anywhere in results.
+2. **Escape (flat) + numbered panes:** `Esc` is flat — from any zone (search box, results list, or Skill Detail) a single press cancels any in-flight search and download and closes the overlay back to the entry chooser. There is no step-back ladder. Focus moves *between* the three panes instead: the settled overlay renders three bordered, numbered panes — **(1) Search** on top, **(2) Results** left, **(3) Details** right — and `1`/`2`/`3` focus them (mirroring the main browser), scoped out of the search box where the digits are query characters. `h`/`l` move focus too: in Results `l` → Details (and `h` is inert — Results is the left content pane, so the search box is reached only with `1` or `/`); in Details `h` → Results. `/` is the fast jump to the search box from either pane. The **(2) Results** pane mirrors the (2) Skills list — title, sort row, divider, then rows — and the **(3) Details** pane mirrors the main Details — name, `source · installs`, divider, tab bar (full labels when the pane is wide enough, compact only when narrow), divider, file list (on file tabs), content. Results is capped at the width a row needs so every surplus column goes to Details.
 3. **Context-aware footer is mandatory:** the footer/status helper (`internal/app/footer.go`) must show the live keybindings for the focused zone (search box / results list / detail), same as normal view. Nothing hidden.
 4. **Grow animation:** `github.com/charmbracelet/harmonica` spring on modal width+height, driven by a capped `tea.Tick` frame loop that stops when settled. First animation/ticker in the repo. Animates an empty shell (before any search), so no mid-tween Glamour/Chroma cost.
 5. **Sorts (client-side; API has none):** `r` Relevance (API fuzzy order), `p` Popularity (installs desc), `n` Name (A–Z). Pressing the same letter again toggles asc/desc. Default = **Popularity desc**. Sort keys live **only in results-list focus** (typing owns letters in the box; detail focus uses those letters for tabs). Sort bar renders at the top, driven from the list.
@@ -40,15 +40,15 @@ The post-install step is **search-flow-specific**; the manual "Enter reference" 
    - Network staggering is impossible (endpoint is all-or-nothing) — fast-first-view is achieved by lazy *rendering*, not lazy fetching.
 9. **Install ref:** `<source>@<skillId>` (e.g. `vercel-labs/agent-skills@vercel-react-best-practices`) — the form `npx skills add` accepts to install that exact skill. No SSH key needed. Reuse `actions.AddCommand` + injected `AddRunner` (prod: `tea.ExecProcess`).
 10. **Result row:** two-line, mirroring `skillRow`. Line 1: skill name. Line 2: `source · <installs> installs` with comma thousands separators (e.g. `540,366 installs`).
-11. **Empty/error states, inline in the relevant pane:** query < 2 → "Type at least 2 characters…" (results pane); zero results → `No skills found for "<q>"` (results pane); search failure/offline → "Search failed — space to retry" (results pane); download failure → "Couldn't load files — space to retry" (detail pane). Retry key = **`space`** (free in the search overlay context; the existing `space`=`filterApply` binding only applies in local-filter-focus). Footer shows the retry key. No new toast/notification system.
+11. **Empty/error states, inline in the relevant pane:** query < 2 → the Results rows area is empty (the `(1) Search` box's own `Search skills…` placeholder is the guidance — no hint duplicated into Results); zero results → `No skills found for "<q>"` (results pane); search failure/offline → "Search failed — space to retry" (results pane); download failure → "Couldn't load files — space to retry" (detail pane). Retry key = **`space`** (free in the search overlay context; the existing `space`=`filterApply` binding only applies in local-filter-focus). Footer shows the retry key. No new toast/notification system.
 12. **Domain term:** a not-yet-installed found skill is a **Marketplace Skill** (glossary; bans remote/available/catalog/search-result as the noun).
 
 ## Control scheme (search overlay), by focus zone — all shown in the footer
 
 - **Chooser step:** `j/k`/`↑↓` select; `Enter` pick; `Esc` cancel wizard.
-- **Search box:** type (debounced); `Enter` or `↓` → jump to results list; `Esc` → chooser.
-- **Results list (pane 1):** `j/k`/`↑↓` navigate; `r`/`p`/`n` sort (same key again toggles asc/desc); `l` → detail; `Enter` → install; `/` → search box; `Esc` → search box; `space` → retry (error state).
-- **Detail (pane 2):** `i`/`r`/`s`/`a` tabs (SKILL.md/References/Scripts/Assets); `tab` toggles file-list/content subfocus; `j/k` file-nav/scroll; `h` → list; `Enter` → install; `/` → search box; `Esc` → list; `space` → retry (download error).
+- **Search box (1):** type (debounced); `Enter` or `↓` → jump to results list; `Esc` → close overlay to chooser. `1/2/3` are query characters here, not pane focus.
+- **Results list (2):** `1/2/3` focus the panes; `j/k`/`↑↓` navigate; `r`/`p`/`n` sort (same key again toggles asc/desc); `l` → detail; `h` is inert (search box is reached with `1` or `/`); `Enter` → install; `/` → search box; `Esc` → close overlay to chooser; `space` → retry (error state).
+- **Detail (3):** `1/2/3` focus the panes; `i`/`r`/`s`/`a` tabs (SKILL.md/References/Scripts/Assets); `tab` toggles file-list/content subfocus; `j/k` file-nav/scroll; `h` → results list; `Enter` → install; `/` → search box; `Esc` → close overlay to chooser; `space` → retry (download error).
 - **Post-install step:** `j/k` select; `Enter` pick `Find more skills` / `Finish`; `Esc` = Finish.
 - Keys are **pane-scoped** as the app already does — a key only acts in the pane that owns it.
 
@@ -79,7 +79,7 @@ The post-install step is **search-flow-specific**; the manual "Enter reference" 
 ## Seams to test (candidate — confirm in the plan)
 
 - Marketplace HTTP client: `Search(ctx, query) → []MarketplaceSkill` and `Download(ctx, owner, repo, skillId) → SkillFiles` (gock-backed).
-- `Model.Update`/`Model.View` for: chooser step, search debounce → results, sort keys + direction toggle, dwell → download + spinner, tab render (SKILL.md first), install ref passed to AddRunner, post-install chooser, empty/error states, Escape ladder, footer contents per zone.
+- `Model.Update`/`Model.View` for: chooser step, search debounce → results, sort keys + direction toggle, dwell → download + spinner, tab render (SKILL.md first), install ref passed to AddRunner, post-install chooser, empty/error states, flat Escape (single press closes from any zone), footer contents per zone.
 
 ## Non-goals / deferred
 

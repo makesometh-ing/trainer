@@ -217,12 +217,13 @@ func TestSkillSearchShortQueryHintNoRequest(t *testing.T) {
 
 	m = typeSearch(m, "a")
 
-	out := plain(view(m))
-	if !strings.Contains(out, "Type at least 2 characters") {
-		t.Errorf("expected the short-query hint, got:\n%s", out)
-	}
 	if gock.IsDone() {
 		t.Error("expected no Search request for a one-character query, but the mock was consumed")
+	}
+	// No results have been fetched, so the Results rows area shows nothing (the
+	// (1) Search placeholder is the guidance, not a hint repeated in Results).
+	if out := plain(view(m)); strings.Contains(out, "Type at least 2 characters") {
+		t.Errorf("did not expect a type-more hint in the Results pane, got:\n%s", out)
 	}
 }
 
@@ -515,6 +516,10 @@ func TestSkillSearchSortKeysAreListScoped(t *testing.T) {
 func TestSkillSearchDwellDownloadsAndRendersSkillMD(t *testing.T) {
 	defer gock.Off()
 	m := searchWithResults(t) // selection rests on the top result
+	// The Details pane mirrors the browser (name, divider, tab bar, divider, body),
+	// which needs a representative terminal to show the body below the frontmatter;
+	// 100x30 is too short for all of it at once.
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	gock.New("https://skills.sh").
 		Get("/api/download/vercel-labs/agent-skills/vercel-react-best-practices").
@@ -525,19 +530,29 @@ func TestSkillSearchDwellDownloadsAndRendersSkillMD(t *testing.T) {
 	m = runSearchCmd(m, cmd)
 
 	out := plain(view(m))
-	if !strings.Contains(out, "Comprehensive") {
-		t.Errorf("expected SKILL.md to render in the detail pane after the dwell, got:\n%s", out)
+	// The marker is the rendered SKILL.md body H1, not a frontmatter field, so it
+	// only appears when the body (below the YAML frontmatter) is actually on-screen
+	// in the detail pane.
+	if !strings.Contains(out, skillMDBodyMarker) {
+		t.Errorf("expected the SKILL.md body to render in the detail pane after the dwell, got:\n%s", out)
 	}
 	if !gock.IsDone() {
 		t.Error("expected the download request to be made on dwell")
 	}
 }
 
+// skillMDBodyMarker is a phrase from the rendered SKILL.md body (the H1 heading)
+// of the download_vercel-react-best-practices fixture. It appears only when the
+// detail pane renders past the YAML frontmatter to the body — the honest proof
+// that the body, not just the frontmatter, is visible at 100x30.
+const skillMDBodyMarker = "Vercel React Best Practices"
+
 // Slice 8, cycle 2: a spinner shows in the detail pane while the download is in
 // flight and is gone once SKILL.md lands.
 func TestSkillSearchDetailSpinnerWhileDownloading(t *testing.T) {
 	defer gock.Off()
 	m := searchWithResults(t)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40}) // room for the body once landed
 
 	gock.New("https://skills.sh").
 		Get("/api/download/vercel-labs/agent-skills/vercel-react-best-practices").
@@ -552,18 +567,18 @@ func TestSkillSearchDetailSpinnerWhileDownloading(t *testing.T) {
 	if !strings.Contains(loading, spinnerFrames[0]) {
 		t.Errorf("expected the detail spinner while the download is active, got:\n%s", loading)
 	}
-	if strings.Contains(loading, "Comprehensive") {
+	if strings.Contains(loading, skillMDBodyMarker) {
 		t.Errorf("did not expect SKILL.md while still downloading, got:\n%s", loading)
 	}
 
-	// Once files land the spinner is gone and SKILL.md renders.
+	// Once files land the spinner is gone and the SKILL.md body renders.
 	m = runSearchCmd(m, cmd)
 	landed := plain(view(m))
 	if strings.Contains(landed, spinnerFrames[0]) {
 		t.Errorf("expected the detail spinner to stop once files land, got:\n%s", landed)
 	}
-	if !strings.Contains(landed, "Comprehensive") {
-		t.Errorf("expected SKILL.md after the spinner stops, got:\n%s", landed)
+	if !strings.Contains(landed, skillMDBodyMarker) {
+		t.Errorf("expected the SKILL.md body after the spinner stops, got:\n%s", landed)
 	}
 }
 
@@ -603,6 +618,7 @@ func TestSkillSearchMovingSelectionDropsStaleDownload(t *testing.T) {
 func TestSkillSearchCacheHitMakesNoSecondRequest(t *testing.T) {
 	defer gock.Off()
 	m := searchWithResults(t)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40}) // room for the body
 
 	gock.New("https://skills.sh").
 		Get("/api/download/vercel-labs/agent-skills/vercel-react-best-practices").
@@ -627,8 +643,8 @@ func TestSkillSearchCacheHitMakesNoSecondRequest(t *testing.T) {
 	if dcmd != nil {
 		t.Error("expected no download command for a cached skill")
 	}
-	if !strings.Contains(plain(view(next)), "Comprehensive") {
-		t.Errorf("expected the cached skill's SKILL.md to re-render, got:\n%s", plain(view(next)))
+	if !strings.Contains(plain(view(next)), skillMDBodyMarker) {
+		t.Errorf("expected the cached skill's SKILL.md body to re-render, got:\n%s", plain(view(next)))
 	}
 }
 
@@ -1119,7 +1135,8 @@ func TestSkillSearchSearchFailureRetry(t *testing.T) {
 // pane; space re-fires the download and SKILL.md lands.
 func TestSkillSearchDownloadFailureRetry(t *testing.T) {
 	defer gock.Off()
-	m := searchWithResults(t) // selection rests on the top result, dwell pending
+	m := searchWithResults(t)                                  // selection rests on the top result, dwell pending
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40}) // room for the body after retry
 
 	dl := "/api/download/vercel-labs/agent-skills/vercel-react-best-practices"
 	gock.New("https://skills.sh").Get(dl).Reply(500)
@@ -1137,8 +1154,8 @@ func TestSkillSearchDownloadFailureRetry(t *testing.T) {
 	m, _ = m.Update(namedKey(tea.KeyEnter)) // box → results list
 	m, cmd = spaceKey(m)
 	m = runSearchCmd(m, cmd)
-	if out := plain(view(m)); !strings.Contains(out, "Comprehensive") {
-		t.Errorf("expected the retried download to render SKILL.md, got:\n%s", out)
+	if out := plain(view(m)); !strings.Contains(out, skillMDBodyMarker) {
+		t.Errorf("expected the retried download to render the SKILL.md body, got:\n%s", out)
 	}
 	if !gock.IsDone() {
 		t.Error("expected both the failed and the retried download request to be made")
@@ -1162,49 +1179,58 @@ func TestSkillSearchSpaceInertOutsideError(t *testing.T) {
 	}
 }
 
-// Slice 13, cycle 1: Esc steps back one focus level per press — the Skill Detail
-// returns to the results list, the list to the search box, the box to the entry
-// chooser, and the chooser closes. Each rung is proven by a zone-scoped key: an
-// Assets tab in the detail, a Name sort in the list, a typed character in the box.
-func TestSkillSearchEscapeLadderStepsBackOneLevel(t *testing.T) {
+// Escape is flat: from any zone a single esc cancels the search and closes the
+// overlay back to the entry chooser. escFromZone drives a settled overlay with
+// results into the given zone, presses esc once, and asserts the overlay is gone
+// and the entry chooser shows.
+func escFromZone(t *testing.T, into func(tea.Model) tea.Model) {
+	t.Helper()
 	defer gock.Off()
 	m := searchWithResults(t)
 	m = seedDownload(t, m, mktDetailFiles())
-	m = enterDetail(m) // Enter → list, l → Skill Detail
+	m = into(m)
 
-	// Detail zone: a opens the Assets tab (a detail-only key).
-	m, _ = m.Update(runeKey('a'))
-	if out := plain(view(m)); !strings.Contains(out, "No preview available") {
-		t.Fatalf("expected to begin in the Skill Detail (Assets tab), got:\n%s", out)
-	}
-
-	// esc: detail → results list. The list-only Name sort now acts.
 	m, _ = m.Update(namedKey(tea.KeyEsc))
-	m, _ = m.Update(runeKey('n'))
-	if out := plain(view(m)); !strings.Contains(out, "clerk-react-patterns") {
-		t.Fatalf("expected esc to step back to the results list (n sorts by Name), got:\n%s", out)
-	}
-
-	// esc: results list → search box. Typing now edits the query.
-	m, _ = m.Update(namedKey(tea.KeyEsc))
-	m, _ = m.Update(runeKey('z'))
-	if out := plain(view(m)); !strings.Contains(out, "reactz") {
-		t.Fatalf("expected esc to step back to the search box (typing edits the query), got:\n%s", out)
-	}
-
-	// esc: search box → entry chooser. The overlay is gone, the chooser shows.
-	m, _ = m.Update(namedKey(tea.KeyEsc))
-	if out := plain(view(m)); strings.Contains(out, "Search skills…") {
-		t.Fatalf("expected esc to leave the overlay for the chooser, got:\n%s", out)
+	if m.(Model).skillSearch != nil {
+		t.Fatalf("expected a single esc to close the overlay, got it still open")
 	}
 	if !strings.Contains(view(m), "Enter skill URL or repository") {
 		t.Fatalf("expected esc to return to the entry chooser, got:\n%s", view(m))
 	}
+}
 
-	// esc: entry chooser → closed.
-	m, _ = m.Update(namedKey(tea.KeyEsc))
-	if strings.Contains(view(m), "Enter skill URL or repository") {
-		t.Errorf("expected a final esc to close the chooser, got:\n%s", view(m))
+// Esc from the Skill Detail closes straight to the entry chooser (no step back
+// to the results list).
+func TestSkillSearchEscFromDetailClosesToChooser(t *testing.T) {
+	escFromZone(t, enterDetail)
+}
+
+// Esc from the results list closes straight to the entry chooser.
+func TestSkillSearchEscFromListClosesToChooser(t *testing.T) {
+	escFromZone(t, func(m tea.Model) tea.Model {
+		m, _ = m.Update(namedKey(tea.KeyEnter)) // box → list
+		return m
+	})
+}
+
+// Esc from the search box closes to the entry chooser.
+func TestSkillSearchEscFromBoxClosesToChooser(t *testing.T) {
+	escFromZone(t, func(m tea.Model) tea.Model { return m })
+}
+
+// Esc while a download is in flight invokes the download's cancel func, so no
+// request outlives the overlay.
+func TestSkillSearchEscCancelsInFlightDownload(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	o := m.(Model).skillSearch
+	cancelled := false
+	o.dlCancel = func() { cancelled = true }
+	o.dlLoading = true
+
+	m.Update(namedKey(tea.KeyEsc)) //nolint:errcheck // shared overlay pointer; only the cancel side effect matters
+	if !cancelled {
+		t.Error("expected esc to cancel the in-flight download")
 	}
 }
 
@@ -1233,11 +1259,10 @@ func TestSkillSearchSlashJumpsToBox(t *testing.T) {
 	}
 }
 
-// Slice 13, cycle 3: backing all the way out of the overlay cancels the
-// in-flight request — a late result that arrives after the ladder reaches the
-// chooser never renders. A request is left loading, the ladder walks the detail
-// back through the list and box to the chooser, then the stale result is
-// delivered.
+// Backing out of the overlay cancels the in-flight request — a late result that
+// arrives after esc closes the overlay never renders. A request is left loading,
+// focus is moved into the detail, and a single esc closes the overlay; then the
+// stale result is delivered.
 func TestSkillSearchBackingOutDropsInFlightResult(t *testing.T) {
 	defer gock.Off()
 	gock.New("https://skills.sh").
@@ -1254,16 +1279,13 @@ func TestSkillSearchBackingOutDropsInFlightResult(t *testing.T) {
 	m, _ = fireDebounce(m)
 	inFlightEpoch := m.(Model).skillSearch.epoch
 
-	// Move focus deep into the overlay, then walk the escape ladder all the way
-	// out: detail → list → box → chooser.
+	// Move focus deep into the overlay, then a single flat esc closes it.
 	m, _ = m.Update(namedKey(tea.KeyEnter)) // box → list
 	m, _ = m.Update(runeKey('l'))           // list → detail
-	m, _ = m.Update(namedKey(tea.KeyEsc))   // detail → list
-	m, _ = m.Update(namedKey(tea.KeyEsc))   // list → box
-	m, _ = m.Update(namedKey(tea.KeyEsc))   // box → entry chooser
+	m, _ = m.Update(namedKey(tea.KeyEsc))   // detail → entry chooser (flat)
 
 	if m.(Model).skillSearch != nil {
-		t.Fatal("expected the full escape ladder to leave the overlay closed")
+		t.Fatal("expected a single esc to leave the overlay closed")
 	}
 	if !strings.Contains(view(m), "Enter skill URL or repository") {
 		t.Fatalf("expected the entry chooser after backing out, got:\n%s", view(m))
@@ -1419,13 +1441,18 @@ func TestSkillSearchDetailSkillMDScrollsWithoutTab(t *testing.T) {
 
 // Finding 4: a freshly opened overlay (searchIdle, empty query) shows the same
 // under-two-characters hint as searchTooShort, not a blank results pane.
-func TestSkillSearchFreshOverlayShowsHint(t *testing.T) {
+func TestSkillSearchFreshOverlayShowsPlaceholder(t *testing.T) {
 	var m tea.Model = withMarket()
 	m = settle(openSkillSearch(m, 100, 30))
 
 	out := plain(view(m))
-	if !strings.Contains(out, "Type at least 2 characters") {
-		t.Errorf("expected the fresh overlay to show the type-more hint, got:\n%s", out)
+	// A fresh overlay guides the user through the (1) Search box's own placeholder,
+	// not a hint duplicated into the (2) Results pane.
+	if !strings.Contains(out, "Search skills") {
+		t.Errorf("expected the fresh overlay to show the search box placeholder, got:\n%s", out)
+	}
+	if strings.Contains(out, "Type at least 2 characters") {
+		t.Errorf("did not expect a type-more hint in the Results pane, got:\n%s", out)
 	}
 }
 
@@ -1506,5 +1533,161 @@ func TestSkillSearchEscReturnsToChooser(t *testing.T) {
 	}
 	if !strings.Contains(out, "Enter skill URL or repository") {
 		t.Errorf("expected esc to return to the entry chooser, got:\n%s", out)
+	}
+}
+
+// Change 2: 1/2/3 focus the panes from outside the search box. From the results
+// list, 3 focuses the detail, 2 the list, and 1 the search box (refocusing it so
+// typing edits the query). Each landing zone is proven by a zone-scoped key.
+func TestSkillSearchDigitPaneFocus(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	m = seedDownload(t, m, mktDetailFiles())
+	m, _ = m.Update(namedKey(tea.KeyEnter)) // box → results list
+
+	// 3 → detail zone: the Assets tab (a detail-only key) now works.
+	m, _ = m.Update(runeKey('3'))
+	m, _ = m.Update(runeKey('a'))
+	if out := plain(view(m)); !strings.Contains(out, "No preview available") {
+		t.Fatalf("expected 3 to focus the detail zone (Assets tab works), got:\n%s", out)
+	}
+
+	// 2 → results list: the Name sort (a list-only key) now works.
+	m, _ = m.Update(runeKey('2'))
+	m, _ = m.Update(runeKey('n'))
+	if out := plain(view(m)); !strings.Contains(out, "clerk-react-patterns") {
+		t.Fatalf("expected 2 to focus the results list (n sorts by Name), got:\n%s", out)
+	}
+
+	// 1 → search box and refocuses it: typing now edits the query.
+	m, _ = m.Update(runeKey('1'))
+	m, _ = m.Update(runeKey('z'))
+	if out := plain(view(m)); !strings.Contains(out, "reactz") {
+		t.Fatalf("expected 1 to focus and refocus the search box, got:\n%s", out)
+	}
+}
+
+// Change 2: a digit typed in the search box is a query character, not a pane
+// switch — the box keeps focus and the digit lands in the query.
+func TestSkillSearchDigitsTypeInBox(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t) // box focused, query "react"
+
+	m, _ = m.Update(runeKey('2'))
+	if out := plain(view(m)); !strings.Contains(out, "react2") {
+		t.Errorf("expected typing 2 in the box to edit the query, got:\n%s", out)
+	}
+	if m.(Model).skillSearch.zone != zoneBox {
+		t.Errorf("expected the box to keep focus when a digit is typed, got zone %d", m.(Model).skillSearch.zone)
+	}
+}
+
+// h is inert in the results list: it must NOT focus the search box (only 1 or /
+// do). After h, focus stays on the list, so a subsequent j moves the selection
+// rather than editing the query.
+func TestSkillSearchListHIsInert(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	m, _ = m.Update(namedKey(tea.KeyEnter)) // box → list
+	m, _ = m.Update(runeKey('h'))           // inert in the list
+	// h neither focused the box nor moved to the detail — focus stays on the list.
+	if z := m.(Model).skillSearch.zone; z != zoneList {
+		t.Errorf("expected h to leave focus on the results list, got zone %v", z)
+	}
+	// And a rune does not reach the query (the box is not focused).
+	m, _ = m.Update(runeKey('z'))
+	if out := plain(view(m)); strings.Contains(out, "reactz") {
+		t.Errorf("expected h to be inert in the list (box not focused), but the query took a keystroke:\n%s", out)
+	}
+}
+
+// Change 3: the settled overlay renders three bordered, numbered panes.
+func TestSkillSearchThreeNumberedPanes(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	out := plain(view(m))
+	for _, want := range []string{"(1) Search", "(2) Results", "(3) Details"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected the numbered pane title %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// Change 3: the whole View never renders wider OR taller than the terminal, at
+// every supported size down to the minimum — including the small sizes where the
+// old clip-by-line-count and last-clamp let a pane grow past its Height or starve
+// a column. Each of the four detail tabs is exercised so the file-list layout is
+// covered too.
+func TestSkillSearchOverlayNeverOverflows(t *testing.T) {
+	sizes := [][2]int{{60, 15}, {62, 17}, {65, 17}, {80, 24}, {100, 30}}
+	for _, sz := range sizes {
+		for _, tabKey := range []rune{'i', 'r', 's', 'a'} {
+			func() {
+				defer gock.Off()
+				m := searchWithResults(t)
+				m = seedDownload(t, m, mktDetailFiles())
+				m = enterDetail(m)
+				m, _ = m.Update(runeKey(tabKey))
+				m, _ = m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
+
+				// The whole View() — overlay composited over the base panes, plus the
+				// footer row — must fit the terminal in both dimensions.
+				out := view(m)
+				if w := lipgloss.Width(out); w > sz[0] {
+					t.Errorf("at %dx%d tab %q: view width %d exceeds terminal width %d\n%s",
+						sz[0], sz[1], string(tabKey), w, sz[0], out)
+				}
+				if h := lipgloss.Height(out); h > sz[1] {
+					t.Errorf("at %dx%d tab %q: view height %d exceeds terminal height %d\n%s",
+						sz[0], sz[1], string(tabKey), h, sz[1], out)
+				}
+			}()
+		}
+	}
+}
+
+// The (2) Results and (3) Details panes render at the same height, so their
+// bottoms align with no stray border row.
+func TestSkillSearchResultsAndDetailPanesAlignHeight(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t).(Model)
+	m = seedDownload(t, m, mktDetailFiles()).(Model)
+
+	paneH := m.searchColumnHeight()
+	results := m.searchPane(zoneList, "(2) Results",
+		m.searchResultsPaneWidth(), paneH, m.renderSortBar()+"\n"+m.renderSkillSearchResults())
+	detail := m.searchPane(zoneDetail, "(3) Details",
+		m.searchDetailPaneWidth(), paneH, m.renderSkillSearchDetail())
+
+	if rh, dh := lipgloss.Height(results), lipgloss.Height(detail); rh != dh {
+		t.Errorf("expected the Results and Details panes to be equal height, got %d vs %d", rh, dh)
+	}
+}
+
+// Change 4: a detail tab key like s, pressed in the results list, must not switch
+// the detail's tab (it is inert in the list). The detail stays on SKILL.md.
+func TestSkillSearchListSKeyDoesNotSwitchDetailTab(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t)
+	m = seedDownload(t, m, mktDetailFiles())
+	m, _ = m.Update(namedKey(tea.KeyEnter)) // box → list, detail on SKILL.md
+
+	m, _ = m.Update(runeKey('s'))
+	out := plain(view(m))
+	if strings.Contains(out, "No preview available") {
+		t.Errorf("expected s in the list not to switch the detail to Assets, got:\n%s", out)
+	}
+	if !strings.Contains(out, "SkillBodyMarker") {
+		t.Errorf("expected the detail to stay on SKILL.md, got:\n%s", out)
+	}
+}
+
+// Change 4: a sort key like p, pressed in the search box, is a query character.
+func TestSkillSearchSortKeyTypesInBox(t *testing.T) {
+	defer gock.Off()
+	m := searchWithResults(t) // box focused, query "react"
+	m, _ = m.Update(runeKey('p'))
+	if out := plain(view(m)); !strings.Contains(out, "reactp") {
+		t.Errorf("expected p in the box to type into the query, got:\n%s", out)
 	}
 }

@@ -473,9 +473,9 @@ injects the real client.
 ## Slice 6: Debounced Skill Search from the box
 
 **User-observable behavior:** typing in the search box runs Skill Search
-against the Marketplace: under 2 characters shows `Type at least 2
-characters…` in the results pane with no request; at 2+ characters, 300ms
-after the last keystroke, the ranked page renders as results. A newer
+against the Marketplace: under 2 characters makes no request and the results
+rows area stays empty (the `(1) Search` placeholder is the guidance); at 2+
+characters, 300ms after the last keystroke, the ranked page renders as results. A newer
 keystroke supersedes and cancels the in-flight request; a spinner shows while
 a request is active and stops when results land.
 

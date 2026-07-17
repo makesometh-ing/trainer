@@ -210,16 +210,24 @@ func TestFooterSkillSearchBoxContext(t *testing.T) {
 func TestFooterSkillSearchResultsContext(t *testing.T) {
 	defer gock.Off()
 	m := searchWithResults(t)
+	// Widen so the full RESULTS footer fits without the narrow-width middle drop, so
+	// every item can be asserted.
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	m, _ = m.Update(namedKey(tea.KeyEnter)) // focus the results list
 
 	f := footerOf(m)
 	if !strings.Contains(f, "RESULTS") {
 		t.Errorf("expected RESULTS chip, got:\n%s", f)
 	}
-	for _, want := range []string{"sort", "detail", "install", "search", "back"} {
+	for _, want := range []string{"1/2/3 panes", "sort", "detail", "install", "search", "back"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("expected %q in the results footer, got:\n%s", want, f)
 		}
+	}
+	// h is inert in the Results list — the search box is reached only via 1 or /, so
+	// the footer must not advertise an h → search box move.
+	if strings.Contains(f, "search box") {
+		t.Errorf("did not expect an h → search box hint in the results footer, got:\n%s", f)
 	}
 	if strings.Contains(f, "retry") {
 		t.Errorf("did not expect a retry key outside the error state, got:\n%s", f)
@@ -252,7 +260,7 @@ func TestFooterSkillSearchDetailContext(t *testing.T) {
 	if !strings.Contains(f, "DETAIL") {
 		t.Errorf("expected DETAIL chip, got:\n%s", f)
 	}
-	for _, want := range []string{"i/r/s/a", "files/content", "list", "install"} {
+	for _, want := range []string{"1/2/3 panes", "i/r/s/a", "files/content", "h results", "install"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("expected %q in the detail footer, got:\n%s", want, f)
 		}

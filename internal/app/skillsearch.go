@@ -256,12 +256,15 @@ func (m Model) searchTargetW() int {
 	return w
 }
 
-// searchTargetH is the near-full-window height the overlay grows to, leaving the
-// frame margin and the footer row.
+// searchTargetH is the near-full-window height the overlay grows to. It fills the
+// frame down to (but never into) the footer row: the overlay outer height plus the
+// footer row must not exceed the terminal height, or the View overflows. It never
+// clamps up past the available height, since minHeight is the smallest supported
+// terminal and forcing the overlay taller than the terminal is what overflowed.
 func (m Model) searchTargetH() int {
-	h := m.height - frameMargin - footerHeight - 1
-	if h < minHeight {
-		h = minHeight
+	h := m.height - frameMargin
+	if h < paneVerticalChrome+1 {
+		h = paneVerticalChrome + 1
 	}
 	return h
 }
@@ -329,6 +332,21 @@ func (m Model) updateSkillSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return next, cmd
 			}
 		}
+		// 1/2/3 focus the panes like the main browser, but only outside the search
+		// box: in the box the digits are query characters, so this is scoped out of
+		// zoneBox and the digits reach the textinput below.
+		if key.Matches(msg, m.keys.mktFocusPanes) && m.skillSearch.zone != zoneBox {
+			switch msg.String() {
+			case "1":
+				m.skillSearch.zone = zoneBox
+				m.skillSearch.box.Focus()
+			case "2":
+				m.skillSearch.zone = zoneList
+			case "3":
+				m.skillSearch.zone = zoneDetail
+			}
+			return m, nil
+		}
 		if m.skillSearch.zone == zoneList {
 			return m.updateSearchList(msg)
 		}
@@ -349,27 +367,16 @@ func (m Model) updateSkillSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// escapeSkillSearch steps back one focus level per press: the Skill Detail
-// returns to the results list, the list returns to the search box, and the box
-// backs out of the overlay to the entry chooser. Backing out of the overlay
-// cancels any in-flight search or download so a late result never renders.
+// escapeSkillSearch closes the overlay from any zone: a single esc cancels any
+// in-flight search and download and returns to the add entry chooser. There is
+// no step-back ladder — box, results list, and Skill Detail all close in one
+// press (1/2/3 and h/l move focus between the panes instead).
 func (m Model) escapeSkillSearch() (tea.Model, tea.Cmd) {
-	o := m.skillSearch
-	switch o.zone {
-	case zoneDetail:
-		o.zone = zoneList
-		return m, nil
-	case zoneList:
-		o.zone = zoneBox
-		o.box.Focus()
-		return m, nil
-	default: // zoneBox
-		m.cancelSearch()
-		m.cancelDownload()
-		m.skillSearch = nil
-		m.chooser = &addChooser{kind: chooserEntry, cursor: entrySearch}
-		return m, nil
-	}
+	m.cancelSearch()
+	m.cancelDownload()
+	m.skillSearch = nil
+	m.chooser = &addChooser{kind: chooserEntry, cursor: entrySearch}
+	return m, nil
 }
 
 // updateSearchList handles a key press while the results list has focus. j/k
@@ -401,7 +408,8 @@ func (m Model) updateSearchList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			o.setSort(marketplace.SortName)
 		}
 	case key.Matches(msg, m.keys.mktToDetail):
-		// l opens the Skill Detail for the resting selection.
+		// l opens the Skill Detail for the resting selection. h is deliberately inert
+		// in the Results list — the search box is reached only with 1 or /.
 		o.zone = zoneDetail
 		return m, nil
 	}
@@ -886,9 +894,19 @@ func springSettled(o *searchOverlay) bool {
 		math.Abs(o.hVel) < settleVel
 }
 
+// searchBoxPaneHeight is the outer height of the (1) Search pane: its rounded
+// border (2), its numbered title row, and the single input row.
+const searchBoxPaneHeight = 4
+
+// searchMinColumnHeight is the smallest outer height the (2) Results / (3)
+// Details panes are allowed to shrink to.
+const searchMinColumnHeight = 5
+
 // renderSkillSearch draws the overlay shell at its current animated size. While
 // growing it shows only the title (an empty shell — no heavy content mid-tween);
-// once settled it shows the focused search box.
+// once settled it shows three bordered, numbered panes — (1) Search on top,
+// (2) Results and (3) Details side by side — inside the outer "Skill Search"
+// frame. The focused pane carries the active border; the others a muted one.
 func (m Model) renderSkillSearch() string {
 	o := m.skillSearch
 	w := int(math.Round(o.w))
@@ -904,21 +922,10 @@ func (m Model) renderSkillSearch() string {
 
 	body := title
 	if !o.growing {
-		contentH := m.searchContentHeight()
-		results := lipgloss.NewStyle().Width(m.searchResultsWidth()).
-			Render(clipHeight(m.renderSkillSearchResults(), contentH))
-		detail := clipHeight(m.renderSkillSearchDetail(), contentH)
-		pane := lipgloss.JoinHorizontal(lipgloss.Top,
-			results,
-			strings.Repeat(" ", searchPaneGap),
-			detail,
-		)
 		body = lipgloss.JoinVertical(lipgloss.Left,
 			title,
-			"",
-			m.renderSkillSearchBox(),
-			m.renderSortBar(),
-			pane,
+			m.renderSearchInputPane(),
+			m.renderSearchColumns(),
 		)
 	}
 
@@ -931,6 +938,63 @@ func (m Model) renderSkillSearch() string {
 		Render(body)
 }
 
+// searchPane draws one numbered, bordered inner pane, mirroring the main
+// browser's pane styling: an accent numbered title (with an optional pre-styled
+// extra riding the same row, e.g. the Results sort bar), a rounded border in the
+// active color when that zone is focused else the muted border color, and its
+// content clipped to BOTH the pane's inner width and height so lipgloss can never
+// re-wrap a long line into extra rows and grow the pane past its Height.
+func (m Model) searchPane(z searchZone, title string, width, height int, content string) string {
+	border := m.theme.Border
+	if m.skillSearch.zone == z {
+		border = m.theme.ActiveBorder
+	}
+	contentW := width - paneBorderPad
+	if contentW < 1 {
+		contentW = 1
+	}
+	head := truncate(lipgloss.NewStyle().Foreground(m.theme.Accent).Render(title), contentW)
+	innerH := height - paneVerticalChrome - 1 // border rows + numbered title row
+	body := head + "\n" + clipBox(content, contentW, innerH)
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(border).
+		Padding(0, 1)
+	if width > 0 {
+		style = style.Width(width)
+	}
+	if height > 0 {
+		style = style.Height(height)
+	}
+	return style.Render(body)
+}
+
+// renderSearchInputPane draws the (1) Search pane: the query input across the
+// full inner width, on top.
+func (m Model) renderSearchInputPane() string {
+	return m.searchPane(zoneBox, "(1) Search", m.searchInnerWidth(), searchBoxPaneHeight, m.renderSkillSearchBox())
+}
+
+// renderSearchColumns draws the (2) Results and (3) Details panes side by side
+// beneath the search box. The sort bar is the first content row of the Results
+// pane, beneath its title.
+func (m Model) renderSearchColumns() string {
+	paneH := m.searchColumnHeight()
+	// Mirror the (2) Skills list: the sort row and a divider sit beneath the title,
+	// above the rows.
+	resultsBody := m.renderSortBar() + "\n" +
+		m.divider(m.searchResultsWidth(), false) + "\n" +
+		m.renderSkillSearchResults()
+	results := m.searchPane(zoneList, "(2) Results", m.searchResultsPaneWidth(), paneH, resultsBody)
+	detail := m.searchPane(zoneDetail, "(3) Details", m.searchDetailPaneWidth(), paneH,
+		m.renderSkillSearchDetail())
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		results,
+		strings.Repeat(" ", searchPaneGap),
+		detail,
+	)
+}
+
 // renderSkillSearchResults renders the results pane beneath the search box,
 // reflecting the query lifecycle: a hint under two characters, the loading
 // spinner while a request runs, and the ranked list once results land.
@@ -938,10 +1002,10 @@ func (m Model) renderSkillSearchResults() string {
 	o := m.skillSearch
 	switch o.state {
 	case searchIdle, searchTooShort:
-		// A fresh overlay (nothing typed yet) and an under-two-character query both
-		// show the same hint, so the results pane is never blank.
-		return lipgloss.NewStyle().Foreground(m.theme.Muted).
-			Render("Type at least 2 characters…")
+		// Nothing to list yet; the (1) Search box's own placeholder ("Search skills…")
+		// is the guidance, so the Results rows area stays empty rather than repeating
+		// input guidance here.
+		return ""
 	case searchLoading:
 		frame := spinnerFrames[o.spinnerFrame%len(spinnerFrames)]
 		return lipgloss.NewStyle().Foreground(m.theme.Accent).Render(frame)
@@ -965,10 +1029,10 @@ func (m Model) renderSkillSearchResults() string {
 	}
 }
 
-// renderSortBar draws the sort bar at the top of the content area: the three
-// sort keys (r relevance, p popularity, n name). The active key is highlighted
-// and carries an arrow showing its direction, so the same-key asc/desc toggle is
-// visible (design decision 5). It is driven from the results list's sort state.
+// renderSortBar draws the sort bar shown on its own row beneath the (2) Results
+// title: the three sort keys with their full labels (r relevance, p popularity,
+// n name). The active key is highlighted and carries an arrow showing its
+// direction, so the same-key asc/desc toggle is visible (design decision 5).
 func (m Model) renderSortBar() string {
 	o := m.skillSearch
 	arrow := "↑"
@@ -990,7 +1054,7 @@ func (m Model) renderSortBar() string {
 	for i, f := range fields {
 		text := f.key + " " + f.label
 		if f.field == o.sortKey {
-			parts[i] = active.Render(text + " " + arrow)
+			parts[i] = active.Render(text + arrow)
 		} else {
 			parts[i] = muted.Render(text)
 		}
@@ -998,31 +1062,76 @@ func (m Model) renderSortBar() string {
 	return strings.Join(parts, "  ")
 }
 
-// searchContentHeight is the number of rows the results list and detail pane
-// share beneath the search box. The overlay's inner height (less its border)
-// reserves the title, a blank, the box, and the sort bar; the rest is content.
-func (m Model) searchContentHeight() int {
-	innerH := int(math.Round(m.skillSearch.h)) - 2
-	avail := innerH - 4
-	if avail < 2 {
-		avail = 2
+// mktTabLabels are the compact tab labels for the overlay's (3) Details pane,
+// used only when the pane is too narrow for the full labels (renderTabsFor) that
+// the installed-skill browser shows. A wrapped tab bar would steal a row and push
+// the SKILL.md body off-screen, so on a narrow pane the labels are shortened to
+// keep the bar on one line instead.
+var mktTabLabels = []struct {
+	t     tab
+	label string
+}{
+	{tabSkill, "(i)SKILL"},
+	{tabReferences, "(r)Refs"},
+	{tabScripts, "(s)Scripts"},
+	{tabAssets, "(a)Assets"},
+}
+
+// renderMktTabs draws the overlay Details pane's four-tab bar with the given tab
+// highlighted. It uses the same full labels as the installed-skill browser when
+// they fit the Details pane on one line, and only falls back to the compact
+// labels on a pane too narrow for them.
+func (m Model) renderMktTabs(active tab) string {
+	if full := m.renderTabsFor(active); lipgloss.Width(full) <= m.searchDetailWidth() {
+		return full
 	}
-	return avail
+	parts := make([]string, 0, len(mktTabLabels))
+	for _, l := range mktTabLabels {
+		style := lipgloss.NewStyle().Foreground(m.theme.Muted)
+		if active == l.t {
+			style = lipgloss.NewStyle().Foreground(m.theme.Accent).Bold(true)
+		}
+		parts = append(parts, style.Render(l.label))
+	}
+	return strings.Join(parts, " ")
 }
 
-// searchResultsCapacity is how many two-line result rows fit in the content area.
+// searchColumnHeight is the outer height of the (2) Results and (3) Details
+// panes: the overlay's inner height, less the "Skill Search" title row and the
+// (1) Search pane, is shared between them.
+func (m Model) searchColumnHeight() int {
+	innerH := int(math.Round(m.skillSearch.h)) - paneVerticalChrome
+	h := innerH - 1 - searchBoxPaneHeight
+	if h < searchMinColumnHeight {
+		h = searchMinColumnHeight
+	}
+	return h
+}
+
+// searchColumnContentHeight is the number of rows available inside a Results /
+// Details pane, below its numbered title (and inside its border).
+func (m Model) searchColumnContentHeight() int {
+	h := m.searchColumnHeight() - paneVerticalChrome - 1 // border rows + numbered title
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// searchResultsCapacity is how many two-line result rows fit in the Results
+// pane, below its numbered title, the sort bar, and the divider (two content rows).
 func (m Model) searchResultsCapacity() int {
-	return m.searchContentHeight() / 2
+	return (m.searchColumnContentHeight() - 2) / 2
 }
 
-// searchPaneGap is the blank column between the results list and the detail pane.
-const searchPaneGap = 1
+// searchPaneGap is the blank column between the Results and Details panes. It is
+// 0 so both panes keep the widest possible content: at the default size the extra
+// column is what lets the (3) Details pane render the SKILL.md body, not just its
+// frontmatter. The panes' own borders separate them.
+const searchPaneGap = 0
 
-// searchResultsMinWidth is the narrowest the results column is allowed to get so
-// its two-line rows (`source · <Install Count> installs`) are not truncated.
-const searchResultsMinWidth = 52
-
-// searchInnerWidth is the content width inside the overlay's border and padding.
+// searchInnerWidth is the content width inside the overlay's border and padding
+// — the width the (1) Search pane and the Results+Details row each fill.
 func (m Model) searchInnerWidth() int {
 	w := int(math.Round(m.skillSearch.w)) - paneBorderPad
 	if w < 1 {
@@ -1031,40 +1140,102 @@ func (m Model) searchInnerWidth() int {
 	return w
 }
 
-// searchDetailWidth is the width of the detail pane. The results column takes
-// roughly half, but never drops below searchResultsMinWidth, so the detail pane
-// gets whatever is left.
-func (m Model) searchDetailWidth() int {
-	inner := m.searchInnerWidth()
-	dw := inner / 2
-	if inner-dw-searchPaneGap < searchResultsMinWidth {
-		dw = inner - searchResultsMinWidth - searchPaneGap
+// searchResultsContentWidth is the width the (2) Results pane wants and no more:
+// its two-line rows are `<name>` over `<source> · <Install Count> installs`, and
+// the widest of those fits in this many columns. The Results pane is capped here
+// so every extra column of a wide terminal goes to the (3) Details pane (where the
+// SKILL.md body and full tab bar live) instead of being split 50/50.
+const searchResultsContentWidth = 46
+
+// searchResultsFloor / searchDetailFloor are the smallest content widths each
+// pane may shrink to on a cramped terminal before the split gives up its
+// preferences and divides the room evenly.
+const (
+	searchResultsFloor = 24
+	searchDetailFloor  = 30
+)
+
+// searchResultsPaneWidth is the outer width of the (2) Results pane. Results is
+// capped at the width it needs (searchResultsContentWidth) and the (3) Details
+// pane takes the whole remainder, so a wide terminal grows Details, not Results.
+// When there is not enough room for Results' cap plus Details' floor, Results
+// yields down to its own floor, and if even that will not fit the two split evenly.
+func (m Model) searchResultsPaneWidth() int {
+	inner := m.searchInnerWidth() - searchPaneGap // the two pane outer widths share this
+	avail := inner - 2*paneBorderPad              // the two panes' content widths share this
+	if avail < 2 {
+		w := inner / 2
+		if w < 1 {
+			w = 1
+		}
+		return w
 	}
-	if dw < 1 {
-		dw = 1
+	results := searchResultsContentWidth
+	if avail < searchResultsFloor+searchDetailFloor {
+		// Too tight for both floors: split evenly so neither pane collapses.
+		results = avail / 2
+	} else {
+		// Cap Results and hand the rest to Details; never starve Details below its
+		// floor, and never drop Results below its own.
+		if results > avail-searchDetailFloor {
+			results = avail - searchDetailFloor
+		}
+		if results < searchResultsFloor {
+			results = searchResultsFloor
+		}
 	}
-	return dw
+	if results < 1 {
+		results = 1
+	}
+	if results > avail-1 {
+		results = avail - 1
+	}
+	return results + paneBorderPad
 }
 
-// searchResultsWidth is the width of the results column, the overlay content
-// width less the detail pane and the gap.
-func (m Model) searchResultsWidth() int {
-	w := m.searchInnerWidth() - m.searchDetailWidth() - searchPaneGap
+// searchDetailPaneWidth is the outer width of the (3) Details pane: whatever the
+// Results pane and the gap leave of the inner width.
+func (m Model) searchDetailPaneWidth() int {
+	w := m.searchInnerWidth() - searchPaneGap - m.searchResultsPaneWidth()
 	if w < 1 {
 		w = 1
 	}
 	return w
 }
 
-// clipHeight keeps at most n lines of s, so a tall pane cannot push the overlay
-// past its fixed height.
-func clipHeight(s string, n int) string {
+// searchResultsWidth is the content width inside the (2) Results pane's border.
+func (m Model) searchResultsWidth() int {
+	w := m.searchResultsPaneWidth() - paneBorderPad
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// searchDetailWidth is the content width inside the (3) Details pane's border.
+func (m Model) searchDetailWidth() int {
+	w := m.searchDetailPaneWidth() - paneBorderPad
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// clipBox clips s to a box of at most n rows and width columns: it keeps the
+// first n lines and truncates each to width, so no single long line can wrap and
+// grow the pane past its Height, and no line can overrun its Width. A line already
+// within width is returned unchanged (truncate is a no-op), so pre-styled content
+// keeps its ANSI intact.
+func clipBox(s string, width, n int) string {
 	if n < 1 {
 		n = 1
 	}
 	lines := strings.Split(s, "\n")
 	if len(lines) > n {
 		lines = lines[:n]
+	}
+	for i, l := range lines {
+		lines[i] = truncate(l, width)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1096,7 +1267,18 @@ func (m Model) renderSkillSearchDetail() string {
 	contentRows, fileCap, hasFiles := m.mktDetailLayout()
 	m.syncMktDetail()
 
-	parts := []string{m.renderTabsFor(o.detailTab)}
+	// Metadata block: the Marketplace Skill's name and `source · Install Count`,
+	// then a divider and the tab bar — the same shape as the installed-skill
+	// browser's Details pane.
+	sel := o.results[o.selected]
+	bold := lipgloss.NewStyle().Foreground(m.theme.Fg).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(m.theme.Muted)
+	parts := []string{
+		bold.Render(truncate(sel.Name, width)),
+		dim.Render(truncate(fmt.Sprintf("%s · %s installs", sel.Source, commaInt(sel.Installs)), width)),
+		m.divider(width, false),
+		m.renderMktTabs(o.detailTab),
+	}
 	if hasFiles {
 		fileLines := m.renderMktFileList(m.mktCurrentFiles())
 		start, end := windowBounds(len(fileLines), o.detailFileSel, fileCap)
@@ -1106,8 +1288,9 @@ func (m Model) renderSkillSearchDetail() string {
 		parts = append(parts, m.divider(width, o.detailSubfocus == subfocusContent))
 		parts = append(parts, m.mktContentWithScrollbar(contentRows)...)
 	} else {
-		// SKILL.md is the fast first view: full-width, no file list and no
-		// scrollbar (matching the slice-8 SKILL.md pane), just the scrollable body.
+		// SKILL.md is the fast first view: a divider separates the tab bar from the
+		// scrollable body, with no file list.
+		parts = append(parts, m.divider(width, false))
 		parts = append(parts, strings.Split(o.detailVP.View(), "\n")...)
 	}
 	return strings.Join(parts, "\n")
@@ -1148,12 +1331,19 @@ func (m Model) mktCurrentFiles() []marketplace.File {
 
 // mktDetailLayout splits the detail pane's rows into the content viewport height,
 // the file-list window capacity, and whether a file list is shown — the overlay
-// counterpart of detailLayout, over the shared searchContentHeight budget.
+// counterpart of detailLayout, over the searchColumnContentHeight budget. The tab
+// bar is compact (one row, renderMktTabs), so exactly one row is budgeted for it
+// and the Details pane ends the same height as Results with bottoms aligned.
 func (m Model) mktDetailLayout() (contentRows, fileCap int, hasFiles bool) {
 	o := m.skillSearch
-	budget := m.searchContentHeight() - 1 // tab bar
+	// The Details pane mirrors the installed-skill browser: a metadata block, a
+	// divider, the tab bar, then (on file tabs) the file list bracketed by dividers,
+	// then the content. metaBlock is name + `source · installs`.
+	const mktMetaRows = 2
+	budget := m.searchColumnContentHeight() - mktMetaRows - 1 - 1 // meta + divider + tab bar
 	if o.detailTab == tabSkill {
-		// SKILL.md has no file list and no divider; the whole budget is content.
+		// SKILL.md has no file list; one divider separates the tab bar from the body.
+		budget--
 		if budget < 1 {
 			budget = 1
 		}
@@ -1392,15 +1582,17 @@ func commaInt(n int) string {
 	return b.String()
 }
 
-// renderSkillSearchBox renders the overlay's search input with its label, bound
-// to the overlay's content width so a long query scrolls within the box.
+// renderSkillSearchBox renders the overlay's search input across the (1) Search
+// pane's inner width, so a long query scrolls within the box. The pane's
+// numbered title already names it, so the input carries no separate label.
 func (m Model) renderSkillSearchBox() string {
-	label := lipgloss.NewStyle().Foreground(m.theme.Muted).Render("Search ")
 	in := m.skillSearch.box
-	w := int(math.Round(m.skillSearch.w)) - paneBorderPad - lipgloss.Width("Search ")
+	// Leave one column for the cursor cell: a focused textinput renders one column
+	// wider than its set width, which would otherwise clip to a trailing "…".
+	w := m.searchInnerWidth() - paneBorderPad - 1
 	if w < 1 {
 		w = 1
 	}
 	in.SetWidth(w)
-	return label + in.View()
+	return in.View()
 }

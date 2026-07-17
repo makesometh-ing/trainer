@@ -127,3 +127,25 @@ func TestFrameFitsWithinTerminal(t *testing.T) {
 		t.Errorf("frame width %d exceeds terminal width %d (overflow)", gotW, w)
 	}
 }
+
+// The three main-browser panes must stretch to the frame bottom so their bottom
+// borders align on a single row. This guards against a regression where pane()
+// dropped its Height and the panes collapsed to their content, leaving a ragged
+// staircase of bottom borders (and, separately, that the overlay-only content
+// clip never leaks into the plain browser).
+func TestMainBrowserPaneBottomsAlign(t *testing.T) {
+	var m tea.Model = newTestModel(browseResult())
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = press(m, "3") // focus Details
+
+	rows := strings.Split(plain(view(m)), "\n")
+	bottomRows := 0
+	for _, r := range rows {
+		if strings.Contains(r, "╰") {
+			bottomRows++
+		}
+	}
+	if bottomRows != 1 {
+		t.Errorf("expected all three pane bottom borders on one aligned row, got %d rows with a bottom corner:\n%s", bottomRows, plain(view(m)))
+	}
+}

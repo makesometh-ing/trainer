@@ -598,6 +598,13 @@ func (m Model) pane(p pane, width, height int, content string) string {
 		style = style.Width(width)
 	}
 	if height > 0 {
+		// While the Skill Search overlay is composited on top, clip the base panes to
+		// their box so the whole View can never overflow the terminal (overlayCenter
+		// does not clip layers). Without the overlay the browser renders exactly as
+		// before — Height only — so its layout is untouched at every size.
+		if m.skillSearch != nil {
+			content = clipBox(content, max(1, width-paneBorderPad), height-paneVerticalChrome)
+		}
 		style = style.Height(height)
 	}
 	return style.Render(content)
